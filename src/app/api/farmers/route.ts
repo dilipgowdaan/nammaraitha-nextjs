@@ -7,11 +7,11 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data: farmers, error } = await supabase
     .from("app_users")
-    .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, created_at")
+    .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery")
     .eq("role", "farmer")
     .not("lat", "is", null)
     .not("lng", "is", null)
-    .order("created_at", { ascending: false });
+    .order("id", { ascending: false });
 
   if (error) {
     return apiError(`Could not load farmers: ${error.message}`, 500);

@@ -15,7 +15,6 @@ import {
   LogIn,
   LogOut,
   MapPin,
-  Menu,
   PackagePlus,
   Save,
   Search,
@@ -250,7 +249,6 @@ export function MarketplaceApp() {
   const [alert, setAlert] = useState<AlertState | null>(null);
   const [busy, setBusy] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
@@ -1604,95 +1602,90 @@ export function MarketplaceApp() {
     { id: "orders" as BuyerTab, label: t.orders, icon: <ClipboardList size={18} /> },
     { id: "profile" as BuyerTab, label: t.profile, icon: <User size={18} /> }
   ];
+  const activeNav = currentUser.role === "farmer" ? farmerNav : buyerNav;
+  const activePageLabel =
+    currentUser.role === "farmer"
+      ? farmerNav.find((item) => item.id === farmerTab)?.label
+      : buyerNav.find((item) => item.id === buyerTab)?.label;
 
   return (
     <div className="app-shell">
-      <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
-        <div className="sidebar-brand">
-          <span className="brand-mark">
-            <Sprout size={24} />
-          </span>
-          <div>
-            <strong>Namma Raitha</strong>
-            <span>ನಮ್ಮ ರೈತ</span>
-          </div>
-        </div>
-        <div className="sidebar-user">
-          <img src={productImage(currentUser.profile_pic)} alt={currentUser.name} />
-          <div>
-            <strong>{currentUser.name}</strong>
-            <span>@{currentUser.username}</span>
-          </div>
-        </div>
-        <nav>
-          {currentUser.role === "farmer"
-            ? farmerNav.map((item) => (
-                <button
-                  key={item.id}
-                  className={farmerTab === item.id ? "active" : ""}
-                  type="button"
-                  onClick={() => {
-                    setFarmerTab(item.id);
-                    setSidebarOpen(false);
-                  }}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              ))
-            : buyerNav.map((item) => (
-                <button
-                  key={item.id}
-                  className={buyerTab === item.id ? "active" : ""}
-                  type="button"
-                  onClick={() => {
-                    setBuyerTab(item.id);
-                    setSidebarOpen(false);
-                  }}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              ))}
-        </nav>
-        <button className="logout-button" type="button" onClick={logout}>
-          <LogOut size={18} />
-          {t.logout}
-        </button>
-      </aside>
-
-      <div className="workspace">
-        <header className="topbar">
-          <button className="icon-button menu-button" type="button" onClick={() => setSidebarOpen(true)}>
-            <Menu size={21} />
+      <header className="main-header">
+        <div className="header-top">
+          <button
+            className="logo-button"
+            type="button"
+            onClick={() => {
+              if (currentUser.role === "farmer") {
+                setFarmerTab("overview");
+              } else {
+                setBuyerTab("market");
+              }
+            }}
+          >
+            <Sprout size={25} />
+            <span>NAMMA RAITHA</span>
           </button>
-          <div>
-            <p className="eyebrow">{currentUser.role}</p>
-            <h1>
-              {currentUser.role === "farmer"
-                ? farmerNav.find((item) => item.id === farmerTab)?.label
-                : buyerNav.find((item) => item.id === buyerTab)?.label}
-            </h1>
-          </div>
-          <div className="topbar-actions">
-            {alert && <div className={`alert alert-${alert.type}`}>{alert.message}</div>}
+
+          <nav className="header-menu" aria-label="Main menu">
+            {activeNav.map((item) => {
+              const isActive =
+                currentUser.role === "farmer" ? farmerTab === item.id : buyerTab === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  className={isActive ? "active" : ""}
+                  type="button"
+                  onClick={() => {
+                    if (currentUser.role === "farmer") {
+                      setFarmerTab(item.id as FarmerTab);
+                    } else {
+                      setBuyerTab(item.id as BuyerTab);
+                    }
+                  }}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="header-actions">
             <button
-              className="ghost-button"
+              className="header-small-button"
               type="button"
               onClick={() => setLanguage((value) => (value === "en" ? "kn" : "en"))}
             >
-              <Languages size={17} />
+              <Languages size={16} />
               {language === "en" ? "ಕನ್ನಡ" : "EN"}
             </button>
-            <button className="avatar-button" type="button" onClick={() => setSidebarOpen(true)}>
+            <div className="profile-chip" title={currentUser.name}>
               <img src={productImage(currentUser.profile_pic)} alt={currentUser.name} />
+              <div>
+                <strong>{currentUser.name}</strong>
+                <span>{currentUser.role}</span>
+              </div>
+            </div>
+            <button className="header-small-button" type="button" onClick={logout}>
+              <LogOut size={16} />
+              {t.logout}
             </button>
           </div>
-        </header>
-        <main className="workspace-content">{renderDashboardContent()}</main>
-      </div>
+        </div>
+      </header>
 
-      {sidebarOpen && <button className="sidebar-backdrop" type="button" onClick={() => setSidebarOpen(false)} />}
+      <main className="workspace-content">
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">{currentUser.role}</p>
+            <h1>{activePageLabel}</h1>
+          </div>
+          {alert && <div className={`alert alert-${alert.type}`}>{alert.message}</div>}
+        </div>
+        {renderDashboardContent()}
+      </main>
 
       {paymentDraft && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">

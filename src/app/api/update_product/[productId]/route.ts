@@ -42,7 +42,7 @@ export async function POST(request: NextRequest, context: Params) {
   if (typeof data.harvest_date === "string") updates.harvest_date = data.harvest_date || null;
   if (typeof data.is_featured === "boolean") updates.is_featured = data.is_featured;
 
-  const { data: product, error } = await auth.supabase
+  let result = await auth.supabase
     .from("products")
     .update(updates)
     .eq("id", id)
@@ -50,13 +50,28 @@ export async function POST(request: NextRequest, context: Params) {
     .select("*")
     .maybeSingle();
 
-  if (error || !product) {
+  if (result.error?.message.includes("schema cache")) {
+    const baseUpdates = { ...updates };
+    delete baseUpdates.category;
+    delete baseUpdates.harvest_date;
+    delete baseUpdates.is_featured;
+
+    result = await auth.supabase
+      .from("products")
+      .update(baseUpdates)
+      .eq("id", id)
+      .eq("farmer_id", auth.user.id)
+      .select("*")
+      .maybeSingle();
+  }
+
+  if (result.error || !result.data) {
     return apiError("Product not found or update failed.", 404);
   }
 
   return apiOk({
     success: true,
     message: "Product updated.",
-    product: normalizeProduct(product)
+    product: normalizeProduct(result.data)
   });
 }

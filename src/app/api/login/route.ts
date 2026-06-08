@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   const { data: user, error } = await getSupabaseAdmin()
     .from("app_users")
     .select(
-      "id, username, password_hash, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, created_at"
+      "id, username, password_hash, role, lat, lng, name, mobile, farm_details, profile_pic, gallery"
     )
     .eq("username", parsed.data.username)
     .maybeSingle();

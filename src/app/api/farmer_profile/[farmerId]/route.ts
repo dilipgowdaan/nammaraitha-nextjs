@@ -17,12 +17,12 @@ export async function GET(_request: Request, context: Params) {
   const [{ data: farmer, error }, { data: productRows }, { data: reviewRows }] = await Promise.all([
     supabase
       .from("app_users")
-      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, created_at")
+      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery")
       .eq("id", id)
       .eq("role", "farmer")
       .maybeSingle(),
-    supabase.from("products").select("*").eq("farmer_id", id).gt("quantity", 0).order("created_at"),
-    supabase.from("reviews").select("*").eq("reviewed_id", id).order("created_at", { ascending: false })
+    supabase.from("products").select("*").eq("farmer_id", id).gt("quantity", 0).order("id"),
+    supabase.from("reviews").select("*").eq("reviewed_id", id).order("id", { ascending: false })
   ]);
 
   if (error || !farmer) {

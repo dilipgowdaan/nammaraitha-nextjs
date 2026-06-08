@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     .from("products")
     .select("*")
     .eq("farmer_id", auth.user.id)
-    .order("created_at", { ascending: false });
+    .order("id", { ascending: false });
 
   if (error) {
     return apiOk([]);

@@ -21,6 +21,8 @@ npm install
 
 2. Create a Supabase project and run `supabase/schema.sql` in the Supabase SQL editor.
 
+If you already created the tables before and see an error like `Could not find the 'category' column of 'products' in the schema cache`, run `supabase/upgrade_existing_database.sql` once in the Supabase SQL editor, then redeploy.
+
 3. Copy `.env.example` to `.env.local` and fill:
 
 ```bash

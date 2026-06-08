@@ -56,7 +56,7 @@ export async function requireUser(request: NextRequest, role?: Role) {
   const { data, error } = await supabase
     .from("app_users")
     .select(
-      "id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, created_at"
+      "id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery"
     )
     .eq("id", session.userId)
     .maybeSingle();

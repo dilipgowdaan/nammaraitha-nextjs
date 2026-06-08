@@ -12,8 +12,6 @@ export async function GET(request: NextRequest) {
     .from("products")
     .select("*")
     .gt("quantity", 0)
-    .order("is_featured", { ascending: false })
-    .order("created_at", { ascending: false })
     .limit(100);
 
   if (productError) {
@@ -40,7 +38,7 @@ export async function GET(request: NextRequest) {
   const [{ data: farmerRows }, { data: reviewRows }] = await Promise.all([
     supabase
       .from("app_users")
-      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, created_at")
+      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery")
       .in("id", farmerIds),
     supabase.from("reviews").select("reviewed_id, rating").in("reviewed_id", farmerIds)
   ]);

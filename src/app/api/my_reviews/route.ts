@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     .from("reviews")
     .select("*")
     .eq("reviewer_id", auth.user.id)
-    .order("created_at", { ascending: false });
+    .order("id", { ascending: false });
 
   if (error || !reviews?.length) {
     return apiOk([]);
