@@ -574,6 +574,48 @@ label {
   margin-bottom: 1rem;
 }
 
+.category-filter {
+  align-items: center;
+  background: #e8f5e9;
+  border: 1px solid #c8e6c9;
+  border-radius: 10px;
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: auto 1fr;
+  margin-bottom: 1rem;
+  padding: 0.8rem;
+}
+
+.category-filter > span {
+  align-items: center;
+  color: #2e7d32;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 0.4rem;
+}
+
+.category-filter > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.category-filter button {
+  background: #fff;
+  border: 1px solid #c8e6c9;
+  border-radius: 999px;
+  color: #2e7d32;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0.45rem 0.75rem;
+}
+
+.category-filter button.active {
+  background: linear-gradient(135deg, #2e7d32, #4caf50);
+  border-color: transparent;
+  color: #fff;
+}
+
 .catalog-card {
   background: #fff;
   border: 1px solid var(--line);
@@ -606,6 +648,62 @@ label {
   gap: 1rem;
 }
 
+.image-upload-panel {
+  align-items: center;
+  background: #f8f9fa;
+  border: 1px solid #e5e9e2;
+  border-radius: 10px;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 160px 1fr;
+  padding: 0.9rem;
+}
+
+.image-upload-panel img {
+  aspect-ratio: 1.2;
+  border-radius: 8px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.image-upload-panel strong,
+.image-upload-panel p {
+  margin: 0;
+}
+
+.compact-upload {
+  grid-template-columns: 120px 1fr;
+}
+
+.upload-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.upload-button {
+  align-items: center;
+  background: linear-gradient(135deg, #2e7d32, #4caf50);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 0.45rem;
+  min-height: 40px;
+  padding: 0.62rem 0.85rem;
+}
+
+.file-input {
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
 .check-row {
   align-items: center;
   display: flex;
@@ -623,6 +721,12 @@ label {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
 
+.product-list {
+  align-items: stretch;
+  grid-template-columns: 1fr;
+  width: 100%;
+}
+
 .product-card,
 .market-card,
 .order-card,
@@ -635,7 +739,9 @@ label {
 
 .product-card {
   display: grid;
-  grid-template-columns: 210px 1fr;
+  grid-template-columns: minmax(190px, 260px) 1fr;
+  min-width: 0;
+  width: 100%;
 }
 
 .product-card > img,
@@ -756,6 +862,13 @@ label {
 .status-cancelled {
   background: #fff0f0;
   color: var(--danger);
+}
+
+.status-admin,
+.status-farmer,
+.status-buyer {
+  background: #e8f5e9;
+  color: #2e7d32;
 }
 
 .bar-list {
@@ -959,6 +1072,92 @@ label {
   margin: 0;
 }
 
+.admin-panel {
+  overflow: hidden;
+}
+
+.admin-table {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.admin-row {
+  align-items: center;
+  background: #f8f9fa;
+  border: 1px solid #e5e9e2;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: 46px 1fr 1fr auto 1fr 1fr 1.4fr;
+  padding: 0.75rem;
+}
+
+.admin-row img {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  width: 46px;
+}
+
+.admin-row p {
+  margin: 0;
+}
+
+.admin-card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+}
+
+.admin-product-card {
+  background: #f8f9fa;
+  border: 1px solid #e5e9e2;
+  border-left: 5px solid #4caf50;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: 130px 1fr;
+  padding: 0.75rem;
+}
+
+.admin-product-card img {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.admin-product-card h3,
+.admin-product-card p {
+  margin: 0 0 0.35rem;
+}
+
+.admin-summary-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-summary-grid span {
+  background: #e8f5e9;
+  border-radius: 8px;
+  color: #2e7d32;
+  font-weight: 800;
+  padding: 0.75rem;
+}
+
+.admin-log span {
+  color: #2e7d32;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.inline-loader {
+  border-radius: 8px;
+  min-height: 220px;
+}
+
 .empty-state {
   align-items: center;
   background: #f8faf5;
@@ -1122,7 +1321,13 @@ label {
 
   .dashboard-grid,
   .form-grid.two,
-  .form-grid.three {
+  .form-grid.three,
+  .image-upload-panel,
+  .compact-upload,
+  .admin-row,
+  .admin-product-card,
+  .category-filter,
+  .product-card {
     grid-template-columns: 1fr;
   }
 

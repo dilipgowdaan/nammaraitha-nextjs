@@ -1,4 +1,4 @@
-export type Role = "farmer" | "buyer";
+export type Role = "farmer" | "buyer" | "admin";
 export type OrderStatus = "pending" | "paid" | "delivered" | "cancelled";
 
 export type UserProfile = {
@@ -117,4 +117,43 @@ export type FarmerProfileBundle = {
   products: Product[];
   reviews: Review[];
   avg_rating: number;
+};
+
+export type AdminDashboard = {
+  metrics: {
+    total_users: number;
+    total_farmers: number;
+    total_buyers: number;
+    total_products: number;
+    total_orders: number;
+    total_revenue: number;
+    delivered_orders: number;
+    total_reviews: number;
+  };
+  users: UserProfile[];
+  products: Array<Product & { farmer_username: string; farmer_name: string }>;
+  orders: Array<
+    MarketplaceOrder & {
+      buyer_username: string;
+      farmer_username: string;
+    }
+  >;
+  reviews: Array<
+    Review & {
+      reviewer_username: string;
+      reviewed_username: string;
+    }
+  >;
+  logs: Array<{
+    id: string;
+    type: string;
+    actor: string;
+    message: string;
+    order_id?: number;
+    product_name?: string;
+    status?: OrderStatus | string;
+    reviewed_username?: string;
+    rating?: number;
+    timestamp: string;
+  }>;
 };

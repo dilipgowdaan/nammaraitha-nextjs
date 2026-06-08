@@ -12,6 +12,21 @@ export async function GET(request: NextRequest) {
     return apiOk(null);
   }
 
+  if (session.role === "admin") {
+    return apiOk({
+      id: 0,
+      username: "admin",
+      role: "admin",
+      lat: 12.9716,
+      lng: 77.5946,
+      name: "Administrator",
+      mobile: "N/A",
+      farm_details: "Platform administrator",
+      profile_pic: "https://placehold.co/96x96/2E7D32/FFFFFF?text=A",
+      gallery: []
+    });
+  }
+
   const { data, error } = await getSupabaseAdmin()
     .from("app_users")
     .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery")

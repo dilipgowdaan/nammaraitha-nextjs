@@ -41,7 +41,8 @@ export async function readSession(request: NextRequest): Promise<SessionUser | n
 
   try {
     const { payload } = await jwtVerify(token, getJwtSecret());
-    const role = payload.role === "farmer" ? "farmer" : "buyer";
+    const role =
+      payload.role === "admin" ? "admin" : payload.role === "farmer" ? "farmer" : "buyer";
     const userId = Number(payload.sub);
 
     if (!Number.isFinite(userId)) {

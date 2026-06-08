@@ -14,6 +14,9 @@ type FarmersMapProps = {
   value?: LatLng;
   onChange?: (value: LatLng) => void;
   onSelectFarmer?: (id: number) => void;
+  productLabel?: string;
+  ratingLabel?: string;
+  newLabel?: string;
   height?: number;
 };
 
@@ -25,6 +28,9 @@ export function FarmersMap({
   value = defaultCenter,
   onChange,
   onSelectFarmer,
+  productLabel = "products",
+  ratingLabel = "Rating",
+  newLabel = "New",
   height = 360
 }: FarmersMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -78,8 +84,8 @@ export function FarmersMap({
           const marker = L.marker([pin.lat, pin.lng], { icon }).addTo(map);
           marker.bindPopup(`
             <strong>${pin.name || pin.username}</strong><br/>
-            ${pin.product_count} products<br/>
-            Rating: ${pin.avg_rating || "New"}
+            ${pin.product_count} ${productLabel}<br/>
+            ${ratingLabel}: ${pin.avg_rating || newLabel}
           `);
           marker.on("click", () => onSelectFarmer?.(pin.id));
         }
@@ -99,7 +105,7 @@ export function FarmersMap({
       disposed = true;
       mapInstance?.remove();
     };
-  }, [height, onChange, onSelectFarmer, picker, pins, value.lat, value.lng]);
+  }, [height, newLabel, onChange, onSelectFarmer, picker, pins, productLabel, ratingLabel, value.lat, value.lng]);
 
   return <div ref={containerRef} className="map-surface" style={{ height }} />;
 }

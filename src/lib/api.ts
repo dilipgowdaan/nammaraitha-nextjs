@@ -33,7 +33,7 @@ export function normalizeUser(row: Record<string, unknown>): UserProfile {
   return {
     id: Number(row.id),
     username: String(row.username),
-    role: row.role === "farmer" ? "farmer" : "buyer",
+    role: row.role === "admin" ? "admin" : row.role === "farmer" ? "farmer" : "buyer",
     lat: Number(row.lat ?? 12.9716),
     lng: Number(row.lng ?? 77.5946),
     name: String(row.name ?? row.username ?? ""),
@@ -50,6 +50,27 @@ export async function requireUser(request: NextRequest, role?: Role) {
 
   if (!session) {
     return { error: apiError("Login required.", 401) };
+  }
+
+  if (session.role === "admin") {
+    const user = normalizeUser({
+      id: 0,
+      username: "admin",
+      role: "admin",
+      lat: 12.9716,
+      lng: 77.5946,
+      name: "Administrator",
+      mobile: "N/A",
+      farm_details: "Platform administrator",
+      profile_pic: "https://placehold.co/96x96/2E7D32/FFFFFF?text=A",
+      gallery: []
+    });
+
+    if (role && role !== "admin") {
+      return { error: apiError(`Only ${role}s can perform this action.`, 403) };
+    }
+
+    return { user, supabase: getSupabaseAdmin() };
   }
 
   const supabase = getSupabaseAdmin();
