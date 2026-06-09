@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
-import { apiError, apiOk, requireUser } from "@/lib/api";
+import { apiError, apiOk, normalizeGallery, requireUser } from "@/lib/api";
 import { profileSchema, schemaMessage } from "@/lib/validation";
 
 export const runtime = "nodejs";
+const maxGalleryItems = 40;
 
 export async function POST(request: NextRequest) {
   const auth = await requireUser(request);
@@ -29,20 +30,36 @@ export async function POST(request: NextRequest) {
   if (data.profile_pic) updates.profile_pic = data.profile_pic;
 
   if (data.gallery) {
-    updates.gallery = data.gallery;
+    updates.gallery = [...new Set(data.gallery)].slice(-maxGalleryItems);
   } else if (data.new_gallery_item) {
-    updates.gallery = [...auth.user.gallery, data.new_gallery_item].slice(-8);
+    const { data: latestProfile } = await auth.supabase
+      .from("app_users")
+      .select("gallery")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+    const latestGallery = normalizeGallery(latestProfile?.gallery ?? auth.user.gallery);
+    updates.gallery = [...new Set([...latestGallery, data.new_gallery_item])].slice(-maxGalleryItems);
   }
 
   if (Object.keys(updates).length === 0) {
     return apiOk({ success: true, message: "Nothing to update." });
   }
 
-  const { error } = await auth.supabase.from("app_users").update(updates).eq("id", auth.user.id);
+  const { data: updatedUser, error } = await auth.supabase
+    .from("app_users")
+    .update(updates)
+    .eq("id", auth.user.id)
+    .select("profile_pic, gallery")
+    .single();
 
   if (error) {
     return apiError(`Profile update failed: ${error.message}`, 500);
   }
 
-  return apiOk({ success: true, message: "Profile updated." });
+  return apiOk({
+    success: true,
+    message: "Profile updated.",
+    profile_pic: updatedUser?.profile_pic ?? null,
+    gallery: normalizeGallery(updatedUser?.gallery)
+  });
 }

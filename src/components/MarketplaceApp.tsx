@@ -205,12 +205,15 @@ const kannadaPhrases: Record<string, string> = {
   "Profile photo": "ಪ್ರೊಫೈಲ್ ಫೋಟೋ",
   "Choose a clear face or farm logo photo.": "ಸ್ಪಷ್ಟ ಮುಖ ಅಥವಾ ಫಾರ್ಮ್ ಲೋಗೋ ಫೋಟೋ ಆರಿಸಿ.",
   "Gallery photo": "ಗ್ಯಾಲರಿ ಫೋಟೋ",
+  "Gallery photos": "ಗ್ಯಾಲರಿ ಫೋಟೋಗಳು",
   "Add a farm, crop, harvest, or shop photo.": "ಫಾರ್ಮ್, ಬೆಳೆ, ಕೊಯ್ಲು ಅಥವಾ ಅಂಗಡಿ ಫೋಟೋ ಸೇರಿಸಿ.",
   "Search": "ಹುಡುಕಿ",
   "Search tomato, ragi, mango, coconut": "ಟೊಮೇಟೊ, ರಾಗಿ, ಮಾವು, ತೆಂಗು ಹುಡುಕಿ",
   "Order": "ಆರ್ಡರ್",
   "Nearby farmers": "ಹತ್ತಿರದ ರೈತರು",
   "Farmer profile": "ರೈತ ಪ್ರೊಫೈಲ್",
+  "Farm products": "ಫಾರ್ಮ್ ಉತ್ಪನ್ನಗಳು",
+  "Close": "ಮುಚ್ಚಿ",
   "No reviews yet.": "ಇನ್ನೂ ವಿಮರ್ಶೆಗಳಿಲ್ಲ.",
   "Your orders": "ನಿಮ್ಮ ಆರ್ಡರ್‌ಗಳು",
   "Your reviews": "ನಿಮ್ಮ ವಿಮರ್ಶೆಗಳು",
@@ -592,7 +595,6 @@ export function MarketplaceApp() {
 
   const loadFarmerProfile = useCallback(
     async (farmerId: number) => {
-      setBuyerTab("farmers");
       try {
         const profile = await requestJson<FarmerProfileBundle>(`/api/farmer_profile/${farmerId}`);
         setSelectedFarmer(profile);
@@ -756,10 +758,16 @@ export function MarketplaceApp() {
       try {
         setProfileForm((form) => ({ ...form, profile_pic: url }));
         setCurrentUser((user) => (user ? { ...user, profile_pic: url } : user));
-        await requestJson("/api/update_profile", {
-          method: "POST",
-          body: JSON.stringify({ profile_pic: url })
-        });
+        const response = await requestJson<{ success: boolean; message: string; profile_pic?: string | null; gallery?: string[] }>(
+          "/api/update_profile",
+          {
+            method: "POST",
+            body: JSON.stringify({ profile_pic: url })
+          }
+        );
+        const nextProfilePic = response.profile_pic ?? url;
+        setProfileForm((form) => ({ ...form, profile_pic: nextProfilePic }));
+        setCurrentUser((user) => (user ? { ...user, profile_pic: nextProfilePic } : user));
         await refreshCurrentUser();
       } catch (error) {
         showAlert(error instanceof Error ? tr(error.message) : tr("Profile update failed."), "error");
@@ -774,12 +782,19 @@ export function MarketplaceApp() {
       try {
         setProfileForm((form) => ({ ...form, new_gallery_item: "" }));
         setCurrentUser((user) =>
-          user ? { ...user, gallery: [...user.gallery, url].slice(-8) } : user
+          user ? { ...user, gallery: [...user.gallery, url].slice(-40) } : user
         );
-        await requestJson("/api/update_profile", {
-          method: "POST",
-          body: JSON.stringify({ new_gallery_item: url })
-        });
+        const response = await requestJson<{ success: boolean; message: string; profile_pic?: string | null; gallery?: string[] }>(
+          "/api/update_profile",
+          {
+            method: "POST",
+            body: JSON.stringify({ new_gallery_item: url })
+          }
+        );
+        const nextGallery = response.gallery ?? [];
+        if (nextGallery.length) {
+          setCurrentUser((user) => (user ? { ...user, gallery: nextGallery } : user));
+        }
         await refreshCurrentUser();
       } catch (error) {
         showAlert(error instanceof Error ? tr(error.message) : tr("Profile update failed."), "error");
@@ -1768,7 +1783,9 @@ export function MarketplaceApp() {
 
         <section className="gallery-grid">
           {galleryItems.map((item) => (
-            <img key={item} src={item} alt="Farm gallery item" onError={fallbackImageOnError} />
+            <figure className="gallery-card" key={item}>
+              <img src={item} alt="Farm gallery item" onError={fallbackImageOnError} />
+            </figure>
           ))}
           {!galleryItems.length && (
             <div className="gallery-empty">
@@ -1778,6 +1795,111 @@ export function MarketplaceApp() {
           )}
         </section>
       </div>
+    );
+  }
+
+  function renderSelectedFarmerProfile() {
+    if (!selectedFarmer) return null;
+
+    const farmerGallery = selectedFarmer.farmer.gallery ?? [];
+
+    return (
+      <section className="panel farmer-profile-view">
+        <div className="farmer-profile-head">
+          <img
+            src={productImage(selectedFarmer.farmer.profile_pic)}
+            alt={selectedFarmer.farmer.name}
+            onError={fallbackImageOnError}
+          />
+          <div>
+            <p className="eyebrow">{tr("Farmer profile")}</p>
+            <h3>{selectedFarmer.farmer.name}</h3>
+            <p>{selectedFarmer.farmer.farm_details || tr("No farm description added.")}</p>
+            <div className="meta-row">
+              <span>
+                <StarsDisplay rating={selectedFarmer.avg_rating} />
+                {selectedFarmer.avg_rating ? selectedFarmer.avg_rating.toFixed(1) : tr("New")}
+              </span>
+              <span>{selectedFarmer.products.length} {tr("Products")}</span>
+              <span>{selectedFarmer.reviews.length} {tr("Reviews")}</span>
+            </div>
+          </div>
+          <button className="icon-button" type="button" title={tr("Close")} onClick={() => setSelectedFarmer(null)}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="meta-row">
+          <span>
+            <MapPin size={15} />
+            {selectedFarmer.farmer.lat.toFixed(3)}, {selectedFarmer.farmer.lng.toFixed(3)}
+          </span>
+          <span>
+            <User size={15} />
+            {selectedFarmer.farmer.mobile}
+          </span>
+        </div>
+
+        <div className="panel-title slim-title">
+          <h3>{tr("Gallery photos")}</h3>
+          <span>{farmerGallery.length}</span>
+        </div>
+        <div className="farmer-gallery-grid">
+          {farmerGallery.map((item) => (
+            <figure className="gallery-card" key={item}>
+              <img src={item} alt={selectedFarmer.farmer.name} onError={fallbackImageOnError} />
+            </figure>
+          ))}
+          {!farmerGallery.length && <EmptyState>{tr("No gallery photos yet")}</EmptyState>}
+        </div>
+
+        <div className="panel-title slim-title">
+          <h3>{tr("Farm products")}</h3>
+          <span>{selectedFarmer.products.length}</span>
+        </div>
+        <div className="market-grid compact-grid">
+          {selectedFarmer.products.map((product) => (
+            <article className="market-card" key={product.id}>
+              <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
+              <div className="market-card-body">
+                <h3>{productNameLabel(product.name)}</h3>
+                <p>{product.growth_method}</p>
+                <strong>{formatMoney(product.price)} / {product.unit}</strong>
+                <div className="order-row">
+                  <input
+                    min="1"
+                    max={product.quantity}
+                    type="number"
+                    value={orderQuantities[product.id] ?? "1"}
+                    onChange={(event) =>
+                      setOrderQuantities({ ...orderQuantities, [product.id]: event.target.value })
+                    }
+                  />
+                  <button
+                    className="primary-button fit"
+                    type="button"
+                    onClick={() => openPayment(product)}
+                  >
+                    <ShoppingBasket size={17} />
+                    {tr("Order")}
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="review-list">
+          {selectedFarmer.reviews.map((review) => (
+            <div className="review-row" key={review.id}>
+              <StarsDisplay rating={review.rating} />
+              <strong>{review.reviewer_username}</strong>
+              <p>{review.comment}</p>
+            </div>
+          ))}
+          {!selectedFarmer.reviews.length && <EmptyState>{tr("No reviews yet.")}</EmptyState>}
+        </div>
+      </section>
     );
   }
 
@@ -1803,6 +1925,8 @@ export function MarketplaceApp() {
             </button>
           </form>
         </section>
+
+        {renderSelectedFarmerProfile()}
 
         <section className="market-grid">
           {searchResults.map((product) => (
@@ -1902,69 +2026,7 @@ export function MarketplaceApp() {
           ))}
         </section>
 
-        {selectedFarmer && (
-          <section className="panel farmer-profile-view">
-            <div className="panel-title">
-              <div>
-                <p className="eyebrow">{tr("Farmer profile")}</p>
-                <h3>{selectedFarmer.farmer.name}</h3>
-              </div>
-              <StarsDisplay rating={selectedFarmer.avg_rating} />
-            </div>
-            <p>{selectedFarmer.farmer.farm_details || tr("No farm description added.")}</p>
-            <div className="meta-row">
-              <span>
-                <MapPin size={15} />
-                {selectedFarmer.farmer.lat.toFixed(3)}, {selectedFarmer.farmer.lng.toFixed(3)}
-              </span>
-              <span>
-                <User size={15} />
-                {selectedFarmer.farmer.mobile}
-              </span>
-            </div>
-            <div className="market-grid compact-grid">
-              {selectedFarmer.products.map((product) => (
-                <article className="market-card" key={product.id}>
-                  <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
-                  <div className="market-card-body">
-                    <h3>{productNameLabel(product.name)}</h3>
-                    <p>{product.growth_method}</p>
-                    <strong>{formatMoney(product.price)} / {product.unit}</strong>
-                    <div className="order-row">
-                      <input
-                        min="1"
-                        max={product.quantity}
-                        type="number"
-                        value={orderQuantities[product.id] ?? "1"}
-                        onChange={(event) =>
-                          setOrderQuantities({ ...orderQuantities, [product.id]: event.target.value })
-                        }
-                      />
-                      <button
-                        className="primary-button fit"
-                        type="button"
-                        onClick={() => openPayment(product)}
-                      >
-                        <ShoppingBasket size={17} />
-                        {tr("Order")}
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="review-list">
-              {selectedFarmer.reviews.map((review) => (
-                <div className="review-row" key={review.id}>
-                  <StarsDisplay rating={review.rating} />
-                  <strong>{review.reviewer_username}</strong>
-                  <p>{review.comment}</p>
-                </div>
-              ))}
-              {!selectedFarmer.reviews.length && <EmptyState>{tr("No reviews yet.")}</EmptyState>}
-            </div>
-          </section>
-        )}
+        {renderSelectedFarmerProfile()}
       </div>
     );
   }

@@ -32,7 +32,7 @@ export const profileSchema = z.object({
   lng: z.coerce.number().min(-180).max(180).optional(),
   profile_pic: optionalUrl,
   new_gallery_item: optionalUrl,
-  gallery: z.array(z.string().trim().url()).max(8).optional()
+  gallery: z.array(z.string().trim().url()).max(40).optional()
 });
 
 export const productSchema = z.object({
