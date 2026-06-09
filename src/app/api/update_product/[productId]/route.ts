@@ -29,6 +29,7 @@ export async function POST(request: NextRequest, context: Params) {
 
   const data = parsed.data;
   const updates: Record<string, unknown> = {};
+  const hasField = (field: string) => Boolean(body && typeof body === "object" && field in body);
 
   if (data.name) updates.name = data.name;
   if (data.description) updates.description = data.description;
@@ -37,10 +38,10 @@ export async function POST(request: NextRequest, context: Params) {
   if (typeof data.quantity === "number") updates.quantity = data.quantity;
   if (data.unit) updates.unit = data.unit;
   if (data.growth_method) updates.growth_method = data.growth_method;
-  if (data.image_value) updates.image_path = data.image_value;
-  if (data.category) updates.category = data.category;
-  if (typeof data.harvest_date === "string") updates.harvest_date = data.harvest_date || null;
-  if (typeof data.is_featured === "boolean") updates.is_featured = data.is_featured;
+  if (hasField("image_gallery")) updates.image_gallery = [...new Set(data.image_gallery ?? [])];
+  if (hasField("category") && data.category) updates.category = data.category;
+  if (hasField("harvest_date") && typeof data.harvest_date === "string") updates.harvest_date = data.harvest_date || null;
+  if (hasField("is_featured") && typeof data.is_featured === "boolean") updates.is_featured = data.is_featured;
 
   let result = await auth.supabase
     .from("products")
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest, context: Params) {
     delete baseUpdates.category;
     delete baseUpdates.harvest_date;
     delete baseUpdates.is_featured;
+    delete baseUpdates.image_gallery;
 
     result = await auth.supabase
       .from("products")

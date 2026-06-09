@@ -17,12 +17,17 @@ export async function GET(_request: Request, context: Params) {
   const [{ data: farmer, error }, { data: productRows }, { data: reviewRows }] = await Promise.all([
     supabase
       .from("app_users")
-      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery")
+      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, verification_status, verification_note, kyc_document_url, verified_at")
       .eq("id", id)
       .eq("role", "farmer")
       .maybeSingle(),
     supabase.from("products").select("*").eq("farmer_id", id).gt("quantity", 0).order("id"),
-    supabase.from("reviews").select("*").eq("reviewed_id", id).order("id", { ascending: false })
+    supabase
+      .from("reviews")
+      .select("*")
+      .eq("reviewed_id", id)
+      .eq("moderation_status", "visible")
+      .order("id", { ascending: false })
   ]);
 
   if (error || !farmer) {
@@ -49,6 +54,7 @@ export async function GET(_request: Request, context: Params) {
       order_id: review.order_id ? numberFrom(review.order_id) : null,
       rating: numberFrom(review.rating),
       comment: String(review.comment ?? ""),
+      moderation_status: review.moderation_status ?? "visible",
       reviewer_username: reviewerMap.get(numberFrom(review.reviewer_id)) ?? "Buyer",
       created_at: review.created_at
     })),

@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
   }
 
   const data = parsed.data;
+  const catalogImage = catalogProductImage(data.name) || defaultProductImage;
+  const imageGallery = [...new Set(data.image_gallery ?? [])];
   const baseProduct = {
     farmer_id: auth.user.id,
     name: data.name,
@@ -29,10 +31,11 @@ export async function POST(request: NextRequest) {
     quantity: data.quantity,
     unit: data.unit,
     growth_method: data.growth_method,
-    image_path: data.image_value || catalogProductImage(data.name) || defaultProductImage
+    image_path: catalogImage
   };
   const enhancedProduct = {
     ...baseProduct,
+    image_gallery: imageGallery,
     category: data.category,
     harvest_date: data.harvest_date || null,
     is_featured: data.is_featured

@@ -50,7 +50,10 @@ export async function GET(request: NextRequest) {
         delivered_timestamp: order.delivered_timestamp,
         product_price: numberFrom(order.product_price),
         product_unit: order.product_unit,
-        payment_reference: order.payment_reference
+        payment_reference: order.payment_reference,
+        delivery_slot: order.delivery_slot ?? null,
+        tracking_status: order.tracking_status ?? "order_placed",
+        tracking_note: order.tracking_note ?? null
       };
     })
   );

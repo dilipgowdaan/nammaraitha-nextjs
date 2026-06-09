@@ -41,6 +41,15 @@ export function normalizeUser(row: Record<string, unknown>): UserProfile {
     farm_details: row.farm_details ? String(row.farm_details) : null,
     profile_pic: row.profile_pic ? String(row.profile_pic) : null,
     gallery: normalizeGallery(row.gallery),
+    verification_status:
+      row.verification_status === "approved" ||
+      row.verification_status === "pending" ||
+      row.verification_status === "rejected"
+        ? row.verification_status
+        : "unsubmitted",
+    verification_note: row.verification_note ? String(row.verification_note) : null,
+    kyc_document_url: row.kyc_document_url ? String(row.kyc_document_url) : null,
+    verified_at: row.verified_at ? String(row.verified_at) : null,
     created_at: row.created_at ? String(row.created_at) : undefined
   };
 }
@@ -63,7 +72,11 @@ export async function requireUser(request: NextRequest, role?: Role) {
       mobile: "N/A",
       farm_details: "Platform administrator",
       profile_pic: "https://placehold.co/96x96/2E7D32/FFFFFF?text=A",
-      gallery: []
+      gallery: [],
+      verification_status: "approved",
+      verification_note: "System administrator",
+      kyc_document_url: null,
+      verified_at: new Date().toISOString()
     });
 
     if (role && role !== "admin") {
@@ -77,7 +90,7 @@ export async function requireUser(request: NextRequest, role?: Role) {
   const { data, error } = await supabase
     .from("app_users")
     .select(
-      "id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery"
+      "id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, verification_status, verification_note, kyc_document_url, verified_at"
     )
     .eq("id", session.userId)
     .maybeSingle();
@@ -112,9 +125,11 @@ export function normalizeProduct(row: Record<string, unknown>): Product {
     unit: String(row.unit ?? "kg"),
     growth_method: String(row.growth_method ?? ""),
     image_path: row.image_path ? String(row.image_path) : null,
+    image_gallery: normalizeGallery(row.image_gallery),
     category: row.category ? String(row.category) : null,
     harvest_date: row.harvest_date ? String(row.harvest_date) : null,
     is_featured: Boolean(row.is_featured),
+    reserved_quantity: numberFrom(row.reserved_quantity, 0),
     created_at: row.created_at ? String(row.created_at) : undefined
   };
 }

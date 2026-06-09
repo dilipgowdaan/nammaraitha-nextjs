@@ -29,7 +29,11 @@ export async function POST(request: NextRequest, context: Params) {
 
   const updates =
     parsed.data.status === "delivered"
-      ? { status: "delivered", delivered_timestamp: new Date().toISOString() }
+      ? {
+          status: "delivered",
+          delivered_timestamp: new Date().toISOString(),
+          tracking_status: "delivered"
+        }
       : { status: parsed.data.status, delivered_timestamp: null };
 
   const { error } = await auth.supabase

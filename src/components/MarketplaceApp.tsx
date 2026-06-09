@@ -1,15 +1,23 @@
 "use client";
 
 import {
+  AlertTriangle,
   BadgeCheck,
   BarChart3,
   Camera,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
+  Clock,
   CreditCard,
   Database,
+  Download,
   Edit3,
+  FileCheck,
   Filter,
+  Flag,
+  Heart,
   Image as ImageIcon,
   IndianRupee,
   Languages,
@@ -19,10 +27,13 @@ import {
   MapPin,
   Navigation,
   PackagePlus,
+  PackageCheck,
   Save,
   Search,
   ShoppingBasket,
+  ShoppingCart,
   ShieldCheck,
+  SlidersHorizontal,
   Sprout,
   Star,
   Store,
@@ -38,6 +49,8 @@ import {
 import type { FormEvent, ReactNode, SyntheticEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FarmersMap } from "./FarmersMap";
+import enTranslations from "@/i18n/en.json";
+import knTranslations from "@/i18n/kn.json";
 import {
   catalogProductImage,
   defaultProductImage,
@@ -49,11 +62,14 @@ import type {
   FarmerAnalytics,
   FarmerMapPin,
   FarmerProfileBundle,
+  InventoryReservation,
   MarketplaceOrder,
   Product,
+  Report,
   Review,
   Role,
   SearchResult,
+  TrackingStatus,
   UserProfile
 } from "@/lib/types";
 
@@ -64,8 +80,8 @@ type AlertState = {
 
 type AuthMode = "login" | "register";
 type FarmerTab = "overview" | "products" | "orders" | "analytics" | "profile";
-type BuyerTab = "market" | "farmers" | "orders" | "profile";
-type AdminTab = "dashboard" | "users" | "products" | "orders" | "logs";
+type BuyerTab = "market" | "cart" | "farmers" | "orders" | "profile";
+type AdminTab = "dashboard" | "users" | "products" | "orders" | "moderation" | "logs";
 type Language = "en" | "kn";
 
 type ProductForm = {
@@ -77,6 +93,7 @@ type ProductForm = {
   unit: string;
   growth_method: string;
   image_value: string;
+  image_gallery: string[];
   category: string;
   harvest_date: string;
   is_featured: boolean;
@@ -102,14 +119,43 @@ type PaymentDraft = {
   image_path: string | null;
   quantity: number;
   total: number;
+  reservation_id?: number;
+  reservation_expires_at?: string;
+  delivery_slot: string;
 };
 
 type ReviewDraft = {
+  review_id?: number;
   farmer_id: number;
   farmer_name: string;
   order_id?: number;
   rating: number;
   comment: string;
+};
+
+type CartItem = {
+  product: SearchResult;
+  quantity: number;
+  delivery_slot: string;
+  added_at: string;
+};
+
+type MarketFilters = {
+  category: string;
+  minPrice: string;
+  maxPrice: string;
+  minRating: string;
+  maxDistance: string;
+  verifiedOnly: boolean;
+  sort: "recommended" | "price_low" | "price_high" | "rating" | "distance";
+};
+
+type ReportDraft = {
+  target_type: "farmer" | "product" | "review" | "order";
+  target_id: number;
+  title: string;
+  reason: string;
+  details: string;
 };
 
 const karnatakaLocations = [
@@ -120,6 +166,23 @@ const karnatakaLocations = [
   { label: "Belagavi", lat: 15.8497, lng: 74.4977 }
 ];
 
+const deliverySlots = [
+  "Tomorrow 7 AM - 10 AM",
+  "Tomorrow 4 PM - 7 PM",
+  "Next day 7 AM - 10 AM",
+  "Weekend morning"
+];
+
+const emptyMarketFilters: MarketFilters = {
+  category: "All",
+  minPrice: "",
+  maxPrice: "",
+  minRating: "",
+  maxDistance: "",
+  verifiedOnly: false,
+  sort: "recommended"
+};
+
 const emptyProductForm: ProductForm = {
   name: "Tomato",
   description: "Fresh local harvest, sorted and ready for delivery.",
@@ -129,6 +192,7 @@ const emptyProductForm: ProductForm = {
   unit: "kg",
   growth_method: "Open field, low chemical use",
   image_value: productCatalog.find((item) => item.name === "Tomato")?.image ?? defaultProductImage,
+  image_gallery: [],
   category: "Vegetables",
   harvest_date: "",
   is_featured: true
@@ -145,236 +209,9 @@ const emptyRegisterForm: RegisterForm = {
   lng: 77.5946
 };
 
-const copy = {
-  en: {
-    loginTitle: "Welcome Back",
-    registerTitle: "Join Namma Raitha",
-    marketplace: "Marketplace",
-    farmers: "Farmers",
-    orders: "Orders",
-    profile: "Profile",
-    analytics: "Analytics",
-    products: "Products",
-    overview: "Overview",
-    logout: "Logout"
-  },
-  kn: {
-    loginTitle: "ಮತ್ತೆ ಸ್ವಾಗತ",
-    registerTitle: "ನಮ್ಮ ರೈತ ಸೇರಿ",
-    marketplace: "ಮಾರುಕಟ್ಟೆ",
-    farmers: "ರೈತರು",
-    orders: "ಆರ್ಡರ್",
-    profile: "ಪ್ರೊಫೈಲ್",
-    analytics: "ಲೆಕ್ಕಾಚಾರ",
-    products: "ಉತ್ಪನ್ನಗಳು",
-    overview: "ನೋಟ",
-    logout: "ನಿರ್ಗಮನ"
-  }
-};
-
-const kannadaPhrases: Record<string, string> = {
-  "Username": "ಬಳಕೆದಾರ ಹೆಸರು",
-  "Password": "ಪಾಸ್ವರ್ಡ್",
-  "Login": "ಲಾಗಿನ್",
-  "New user? Register": "ಹೊಸ ಬಳಕೆದಾರರಾ? ನೋಂದಣಿ",
-  "Create account": "ಖಾತೆ ರಚಿಸಿ",
-  "Back to login": "ಲಾಗಿನ್‌ಗೆ ಹಿಂತಿರುಗಿ",
-  "Full name": "ಪೂರ್ಣ ಹೆಸರು",
-  "Mobile": "ಮೊಬೈಲ್",
-  "Farm details": "ಫಾರ್ಮ್ ವಿವರಗಳು",
-  "Category": "ವರ್ಗ",
-  "Product": "ಉತ್ಪನ್ನ",
-  "Unit": "ಘಟಕ",
-  "Market price": "ಮಾರುಕಟ್ಟೆ ಬೆಲೆ",
-  "Your price": "ನಿಮ್ಮ ಬೆಲೆ",
-  "Stock": "ಸ್ಟಾಕ್",
-  "Growth method": "ಬೆಳೆದ ವಿಧಾನ",
-  "Harvest date": "ಕೊಯ್ಲು ದಿನಾಂಕ",
-  "Description": "ವಿವರಣೆ",
-  "Featured in buyer search": "ಖರೀದಿದಾರರ ಹುಡುಕಾಟದಲ್ಲಿ ತೋರಿಸಿ",
-  "Add product": "ಉತ್ಪನ್ನ ಸೇರಿಸಿ",
-  "Edit product": "ಉತ್ಪನ್ನ ಸಂಪಾದಿಸಿ",
-  "Save changes": "ಬದಲಾವಣೆ ಉಳಿಸಿ",
-  "Cancel": "ರದ್ದು",
-  "Product photo": "ಉತ್ಪನ್ನದ ಫೋಟೋ",
-  "Upload from gallery or take a fresh camera photo.": "ಗ್ಯಾಲರಿಯಿಂದ ಆರಿಸಿ ಅಥವಾ ಕ್ಯಾಮೆರಾದಲ್ಲಿ ಹೊಸ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ.",
-  "Gallery": "ಗ್ಯಾಲರಿ",
-  "Camera": "ಕ್ಯಾಮೆರಾ",
-  "Uploading...": "ಅಪ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ...",
-  "Save profile": "ಪ್ರೊಫೈಲ್ ಉಳಿಸಿ",
-  "Profile photo": "ಪ್ರೊಫೈಲ್ ಫೋಟೋ",
-  "Choose a clear face or farm logo photo.": "ಸ್ಪಷ್ಟ ಮುಖ ಅಥವಾ ಫಾರ್ಮ್ ಲೋಗೋ ಫೋಟೋ ಆರಿಸಿ.",
-  "Gallery photo": "ಗ್ಯಾಲರಿ ಫೋಟೋ",
-  "Gallery photos": "ಗ್ಯಾಲರಿ ಫೋಟೋಗಳು",
-  "Add a farm, crop, harvest, or shop photo.": "ಫಾರ್ಮ್, ಬೆಳೆ, ಕೊಯ್ಲು ಅಥವಾ ಅಂಗಡಿ ಫೋಟೋ ಸೇರಿಸಿ.",
-  "Search": "ಹುಡುಕಿ",
-  "Search tomato, ragi, mango, coconut": "ಟೊಮೇಟೊ, ರಾಗಿ, ಮಾವು, ತೆಂಗು ಹುಡುಕಿ",
-  "Order": "ಆರ್ಡರ್",
-  "Nearby farmers": "ಹತ್ತಿರದ ರೈತರು",
-  "Farmer profile": "ರೈತ ಪ್ರೊಫೈಲ್",
-  "Farm products": "ಫಾರ್ಮ್ ಉತ್ಪನ್ನಗಳು",
-  "Close": "ಮುಚ್ಚಿ",
-  "No reviews yet.": "ಇನ್ನೂ ವಿಮರ್ಶೆಗಳಿಲ್ಲ.",
-  "Your orders": "ನಿಮ್ಮ ಆರ್ಡರ್‌ಗಳು",
-  "Your reviews": "ನಿಮ್ಮ ವಿಮರ್ಶೆಗಳು",
-  "Review": "ವಿಮರ್ಶೆ",
-  "Submit review": "ವಿಮರ್ಶೆ ಸಲ್ಲಿಸಿ",
-  "Write your review": "ನಿಮ್ಮ ವಿಮರ್ಶೆ ಬರೆಯಿರಿ",
-  "Dashboard": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
-  "Users": "ಬಳಕೆದಾರರು",
-  "Products": "ಉತ್ಪನ್ನಗಳು",
-  "Logs": "ಲಾಗ್‌ಗಳು",
-  "Users and roles": "ಬಳಕೆದಾರರು ಮತ್ತು ಪಾತ್ರಗಳು",
-  "All products": "ಎಲ್ಲಾ ಉತ್ಪನ್ನಗಳು",
-  "Order history": "ಆರ್ಡರ್ ಇತಿಹಾಸ",
-  "History and logs": "ಇತಿಹಾಸ ಮತ್ತು ಲಾಗ್‌ಗಳು",
-  "Platform summary": "ಪ್ಲಾಟ್‌ಫಾರ್ಮ್ ಸಾರಾಂಶ",
-  "Recent activity": "ಇತ್ತೀಚಿನ ಚಟುವಟಿಕೆ",
-  "Live data": "ಲೈವ್ ಡೇಟಾ",
-  "Namma Pay": "ನಮ್ಮ ಪೇ",
-  "Pay": "ಪಾವತಿ",
-  "Decline": "ನಿರಾಕರಿಸಿ",
-  "Loading Namma Raitha": "ನಮ್ಮ ರೈತ ಲೋಡ್ ಆಗುತ್ತಿದೆ",
-  "Loading admin dashboard": "ಅಡ್ಮಿನ್ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ಲೋಡ್ ಆಗುತ್ತಿದೆ",
-  "Name": "ಹೆಸರು",
-  "Farmer": "ರೈತ",
-  "Buyer": "ಖರೀದಿದಾರ",
-  "Admin": "ಅಡ್ಮಿನ್",
-  "farmer": "ರೈತ",
-  "buyer": "ಖರೀದಿದಾರ",
-  "admin": "ಅಡ್ಮಿನ್",
-  "paid": "ಪಾವತಿಸಲಾಗಿದೆ",
-  "pending": "ಬಾಕಿ",
-  "delivered": "ವಿತರಿಸಲಾಗಿದೆ",
-  "cancelled": "ರದ್ದು",
-  "Listed products": "ಪಟ್ಟಿ ಉತ್ಪನ್ನಗಳು",
-  "Active orders": "ಸಕ್ರಿಯ ಆರ್ಡರ್‌ಗಳು",
-  "Total earnings": "ಒಟ್ಟು ಆದಾಯ",
-  "Farmer rating": "ರೈತ ರೇಟಿಂಗ್",
-  "Farm profile": "ಫಾರ್ಮ್ ಪ್ರೊಫೈಲ್",
-  "Farm details not added yet.": "ಫಾರ್ಮ್ ವಿವರಗಳನ್ನು ಇನ್ನೂ ಸೇರಿಸಲಾಗಿಲ್ಲ.",
-  "Edit profile": "ಪ್ರೊಫೈಲ್ ಸಂಪಾದಿಸಿ",
-  "Stock attention": "ಸ್ಟಾಕ್ ಗಮನ",
-  "low": "ಕಡಿಮೆ",
-  "left": "ಉಳಿದಿದೆ",
-  "by": "ಇಂದ",
-  "No products listed yet.": "ಇನ್ನೂ ಉತ್ಪನ್ನಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿಲ್ಲ.",
-  "Recent active orders": "ಇತ್ತೀಚಿನ ಸಕ್ರಿಯ ಆರ್ಡರ್‌ಗಳು",
-  "No active orders.": "ಸಕ್ರಿಯ ಆರ್ಡರ್‌ಗಳಿಲ್ಲ.",
-  "Edit": "ಸಂಪಾದಿಸಿ",
-  "Add your first product to open your farm store.": "ನಿಮ್ಮ ಫಾರ್ಮ್ ಅಂಗಡಿ ತೆರೆಯಲು ಮೊದಲ ಉತ್ಪನ್ನ ಸೇರಿಸಿ.",
-  "pending delivery": "ವಿತರಣೆ ಬಾಕಿ",
-  "for": "ಗಾಗಿ",
-  "ordered": "ಆರ್ಡರ್ ಮಾಡಿದ ದಿನ",
-  "Payment": "ಪಾವತಿ",
-  "recorded": "ದಾಖಲಾಗಿದೆ",
-  "of": "ನ",
-  "Order marked delivered.": "ಆರ್ಡರ್ ವಿತರಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಲಾಗಿದೆ.",
-  "Paid orders": "ಪಾವತಿಸಿದ ಆರ್ಡರ್‌ಗಳು",
-  "Units sold": "ಮಾರಾಟವಾದ ಘಟಕಗಳು",
-  "Earnings": "ಆದಾಯ",
-  "Top product": "ಮುಖ್ಯ ಉತ್ಪನ್ನ",
-  "Sales by product": "ಉತ್ಪನ್ನದ ಪ್ರಕಾರ ಮಾರಾಟ",
-  "Sales will appear after orders.": "ಆರ್ಡರ್‌ಗಳ ನಂತರ ಮಾರಾಟ ಇಲ್ಲಿ ಕಾಣುತ್ತದೆ.",
-  "Sales history": "ಮಾರಾಟ ಇತಿಹಾಸ",
-  "Latest 10": "ಇತ್ತೀಚಿನ 10",
-  "No sales history yet.": "ಇನ್ನೂ ಮಾರಾಟ ಇತಿಹಾಸವಿಲ್ಲ.",
-  "No gallery photos yet": "ಇನ್ನೂ ಗ್ಯಾಲರಿ ಫೋಟೋಗಳಿಲ್ಲ",
-  "Market": "ಮಾರುಕಟ್ಟೆ",
-  "Rating": "ರೇಟಿಂಗ್",
-  "New": "ಹೊಸದು",
-  "No products found.": "ಉತ್ಪನ್ನಗಳು ಸಿಗಲಿಲ್ಲ.",
-  "farms": "ಫಾರ್ಮ್‌ಗಳು",
-  "products available": "ಉತ್ಪನ್ನಗಳು",
-  "No farm description added.": "ಫಾರ್ಮ್ ವಿವರಣೆ ಸೇರಿಸಲಾಗಿಲ್ಲ.",
-  "from": "ಇಂದ",
-  "Ordered": "ಆರ್ಡರ್ ದಿನ",
-  "Delivered": "ವಿತರಣೆಯ ದಿನ",
-  "No purchase history yet.": "ಖರೀದಿ ಇತಿಹಾಸ ಇಲ್ಲ.",
-  "No reviews submitted yet.": "ಇನ್ನೂ ವಿಮರ್ಶೆ ಸಲ್ಲಿಸಿಲ್ಲ.",
-  "users": "ಬಳಕೆದಾರರು",
-  "listings": "ಪಟ್ಟಿಗಳು",
-  "orders": "ಆರ್ಡರ್‌ಗಳು",
-  "recent events": "ಇತ್ತೀಚಿನ ಘಟನೆಗಳು",
-  "Buyers": "ಖರೀದಿದಾರರು",
-  "Reviews": "ವಿಮರ್ಶೆಗಳು",
-  "Revenue": "ಆದಾಯ",
-  "No details": "ವಿವರಗಳಿಲ್ಲ",
-  "order": "ಆರ್ಡರ್",
-  "review": "ವಿಮರ್ಶೆ",
-  "Use GPS": "ಜಿಪಿಎಸ್ ಬಳಸಿ",
-  "GPS": "ಜಿಪಿಎಸ್",
-  "Location": "ಸ್ಥಳ",
-  "Use your device location": "ನಿಮ್ಮ ಸಾಧನದ ಸ್ಥಳ ಬಳಸಿ",
-  "Image uploaded.": "ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಆಯಿತು.",
-  "Reading your GPS location...": "ನಿಮ್ಮ ಜಿಪಿಎಸ್ ಸ್ಥಳ ಓದುತ್ತಿದೆ...",
-  "GPS permission was denied. Allow location access in the browser.": "ಜಿಪಿಎಸ್ ಅನುಮತಿ ನಿರಾಕರಿಸಲಾಗಿದೆ. ಬ್ರೌಸರ್‌ನಲ್ಲಿ ಸ್ಥಳ ಪ್ರವೇಶಕ್ಕೆ ಅನುಮತಿ ನೀಡಿ.",
-  "Could not read GPS. Try again on HTTPS or allow precise location.": "ಜಿಪಿಎಸ್ ಓದಲು ಆಗಲಿಲ್ಲ. HTTPS ನಲ್ಲಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ ಅಥವಾ ನಿಖರ ಸ್ಥಳಕ್ಕೆ ಅನುಮತಿ ನೀಡಿ.",
-  "Location is not available in this browser.": "ಈ ಬ್ರೌಸರ್‌ನಲ್ಲಿ ಸ್ಥಳ ಸೌಲಭ್ಯ ಲಭ್ಯವಿಲ್ಲ.",
-  "Logged out.": "ನಿರ್ಗಮಿಸಲಾಗಿದೆ.",
-  "Stock updated.": "ಸ್ಟಾಕ್ ನವೀಕರಿಸಲಾಗಿದೆ.",
-  "Enter a valid quantity.": "ಸರಿಯಾದ ಪ್ರಮಾಣ ನಮೂದಿಸಿ.",
-  "Payment declined.": "ಪಾವತಿ ನಿರಾಕರಿಸಲಾಗಿದೆ.",
-  "Login successful.": "ಲಾಗಿನ್ ಯಶಸ್ವಿಯಾಗಿದೆ.",
-  "Admin login successful.": "ಅಡ್ಮಿನ್ ಲಾಗಿನ್ ಯಶಸ್ವಿಯಾಗಿದೆ.",
-  "Registered successfully. Please login.": "ನೋಂದಣಿ ಯಶಸ್ವಿಯಾಗಿದೆ. ದಯವಿಟ್ಟು ಲಾಗಿನ್ ಮಾಡಿ.",
-  "Product added successfully.": "ಉತ್ಪನ್ನ ಯಶಸ್ವಿಯಾಗಿ ಸೇರಿಸಲಾಗಿದೆ.",
-  "Product updated.": "ಉತ್ಪನ್ನ ನವೀಕರಿಸಲಾಗಿದೆ.",
-  "Product deleted.": "ಉತ್ಪನ್ನ ಅಳಿಸಲಾಗಿದೆ.",
-  "Order placed successfully.": "ಆರ್ಡರ್ ಯಶಸ್ವಿಯಾಗಿ ನೀಡಲಾಗಿದೆ.",
-  "Profile updated.": "ಪ್ರೊಫೈಲ್ ನವೀಕರಿಸಲಾಗಿದೆ.",
-  "Nothing to update.": "ನವೀಕರಿಸಲು ಏನೂ ಇಲ್ಲ.",
-  "Review submitted successfully.": "ವಿಮರ್ಶೆ ಯಶಸ್ವಿಯಾಗಿ ಸಲ್ಲಿಸಲಾಗಿದೆ.",
-  "Login failed.": "ಲಾಗಿನ್ ವಿಫಲವಾಗಿದೆ.",
-  "Registration failed.": "ನೋಂದಣಿ ವಿಫಲವಾಗಿದೆ.",
-  "Image upload failed.": "ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ವಿಫಲವಾಗಿದೆ.",
-  "Product save failed.": "ಉತ್ಪನ್ನ ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ.",
-  "Stock update failed.": "ಸ್ಟಾಕ್ ನವೀಕರಣ ವಿಫಲವಾಗಿದೆ.",
-  "Delete failed.": "ಅಳಿಸುವುದು ವಿಫಲವಾಗಿದೆ.",
-  "Order update failed.": "ಆರ್ಡರ್ ನವೀಕರಣ ವಿಫಲವಾಗಿದೆ.",
-  "Profile update failed.": "ಪ್ರೊಫೈಲ್ ನವೀಕರಣ ವಿಫಲವಾಗಿದೆ.",
-  "Payment failed.": "ಪಾವತಿ ವಿಫಲವಾಗಿದೆ.",
-  "Review failed.": "ವಿಮರ್ಶೆ ವಿಫಲವಾಗಿದೆ.",
-  "removed.": "ತೆಗೆದುಹಾಕಲಾಗಿದೆ.",
-  "Invalid username or password.": "ಬಳಕೆದಾರ ಹೆಸರು ಅಥವಾ ಪಾಸ್‌ವರ್ಡ್ ತಪ್ಪಾಗಿದೆ.",
-  "Login required.": "ಲಾಗಿನ್ ಅಗತ್ಯವಿದೆ.",
-  "Please choose an image file.": "ದಯವಿಟ್ಟು ಚಿತ್ರ ಫೈಲ್ ಆಯ್ಕೆಮಾಡಿ.",
-  "Only image uploads are supported.": "ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಮಾತ್ರ ಬೆಂಬಲಿತವಾಗಿದೆ.",
-  "Image is too large. Keep it under 6 MB.": "ಚಿತ್ರ ತುಂಬಾ ದೊಡ್ಡದು. 6 MB ಒಳಗೆ ಇರಿಸಿ.",
-  "Invalid product id.": "ಉತ್ಪನ್ನ ಐಡಿ ಸರಿಯಿಲ್ಲ.",
-  "Product not found or update failed.": "ಉತ್ಪನ್ನ ಸಿಗಲಿಲ್ಲ ಅಥವಾ ನವೀಕರಣ ವಿಫಲವಾಗಿದೆ.",
-  "Farmer not found.": "ರೈತ ಸಿಗಲಿಲ್ಲ.",
-  "Invalid request payload.": "ವಿನಂತಿಯ ಮಾಹಿತಿ ಸರಿಯಿಲ್ಲ.",
-  "Your uploaded products": "ನೀವು ಸೇರಿಸಿದ ಉತ್ಪನ್ನಗಳು",
-  "Catalog image is used by default. Upload your own farm photo to replace it.": "ಡೀಫಾಲ್ಟ್ ಆಗಿ ಕ್ಯಾಟಲಾಗ್ ಚಿತ್ರ ಬಳಸಲಾಗುತ್ತದೆ. ಬದಲಿಸಲು ನಿಮ್ಮ ಫಾರ್ಮ್ ಫೋಟೋ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.",
-  "Tomato": "ಟೊಮೇಟೊ",
-  "Onion": "ಈರುಳ್ಳಿ",
-  "Brinjal": "ಬದನೆಕಾಯಿ",
-  "Mango": "ಮಾವು",
-  "Banana": "ಬಾಳೆಹಣ್ಣು",
-  "Guava": "ಸೀಬೆಹಣ್ಣು",
-  "Marigold": "ಚೆಂಡು ಹೂವು",
-  "Jasmine": "ಮಲ್ಲಿಗೆ",
-  "Ragi": "ರಾಗಿ",
-  "Jowar": "ಜೋಳ",
-  "Rice": "ಅಕ್ಕಿ",
-  "Turmeric": "ಅರಿಶಿನ",
-  "Chilli": "ಮೆಣಸಿನಕಾಯಿ",
-  "Drumstick Leaves": "ನುಗ್ಗೆ ಸೊಪ್ಪು",
-  "Coconut": "ತೆಂಗಿನಕಾಯಿ"
-};
-
-const kannadaCategories: Record<string, string> = {
-  Vegetables: "ತರಕಾರಿಗಳು",
-  Fruits: "ಹಣ್ಣುಗಳು",
-  Flowers: "ಹೂವುಗಳು",
-  Millets: "ಸಿರಿಧಾನ್ಯಗಳು",
-  Grains: "ಧಾನ್ಯಗಳು",
-  Pulses: "ಬೇಳೆಗಳು",
-  Oilseeds: "ಎಣ್ಣೆಬೀಜಗಳು",
-  Spices: "ಮಸಾಲೆಗಳು",
-  Greens: "ಸೊಪ್ಪುಗಳು",
-  Plantation: "ತೋಟಗಾರಿಕೆ"
+const translations: Record<Language, { nav: Record<string, string>; messages: Record<string, string>; categories: Record<string, string> }> = {
+  en: enTranslations,
+  kn: knTranslations
 };
 
 async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -418,6 +255,19 @@ function productImage(src?: string | null, productName?: string | null) {
   return src || catalogProductImage(productName) || defaultProductImage;
 }
 
+type ProductImageSource = Pick<Product, "image_path" | "image_gallery" | "name">;
+
+function productImageSet(product: ProductImageSource) {
+  return Array.from(
+    new Set([productImage(product.image_path, product.name), ...(product.image_gallery ?? [])].filter(Boolean))
+  ).slice(0, 9);
+}
+
+function savingsPercent(product: Pick<Product, "market_price" | "price">) {
+  if (!product.market_price || product.market_price <= product.price) return 0;
+  return Math.round(((product.market_price - product.price) / product.market_price) * 100);
+}
+
 function fallbackImageOnError(event: SyntheticEvent<HTMLImageElement>) {
   event.currentTarget.onerror = null;
   event.currentTarget.src = defaultProductImage;
@@ -441,6 +291,32 @@ function StarsDisplay({ rating }: { rating: number }) {
 
 function StatusPill({ status, label }: { status: string; label?: string }) {
   return <span className={`status-pill status-${status}`}>{label ?? status}</span>;
+}
+
+function VerificationBadge({ status, label }: { status?: string; label: string }) {
+  if (status !== "approved") return null;
+
+  return (
+    <span className="verification-badge">
+      <BadgeCheck size={14} />
+      {label}
+    </span>
+  );
+}
+
+function OrderTracker({ status, labels }: { status?: string | null; labels: string[] }) {
+  const steps: TrackingStatus[] = ["order_placed", "packed", "out_for_delivery", "delivered"];
+  const current = Math.max(0, steps.indexOf((status as TrackingStatus) || "order_placed"));
+
+  return (
+    <div className="order-tracker">
+      {steps.map((step, index) => (
+        <span key={step} className={index <= current ? "tracker-step active" : "tracker-step"}>
+          {labels[index]}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -497,29 +373,37 @@ export function MarketplaceApp() {
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [selectedProductCategory, setSelectedProductCategory] =
     useState<(typeof productCategories)[number]>("Vegetables");
-  const [uploadingTarget, setUploadingTarget] = useState<"product" | "profile" | "gallery" | null>(null);
+  const [uploadingTarget, setUploadingTarget] = useState<"product" | "profile" | "gallery" | "kyc" | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [farmerOrders, setFarmerOrders] = useState<MarketplaceOrder[]>([]);
   const [analytics, setAnalytics] = useState<FarmerAnalytics | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [marketFilters, setMarketFilters] = useState<MarketFilters>(emptyMarketFilters);
+  const [marketPage, setMarketPage] = useState(1);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [wishlistItems, setWishlistItems] = useState<Record<number, SearchResult>>({});
   const [farmers, setFarmers] = useState<FarmerMapPin[]>([]);
   const [buyerOrders, setBuyerOrders] = useState<MarketplaceOrder[]>([]);
   const [myReviews, setMyReviews] = useState<Review[]>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<FarmerProfileBundle | null>(null);
   const [orderQuantities, setOrderQuantities] = useState<Record<number, string>>({});
+  const [activeProductImages, setActiveProductImages] = useState<Record<number, string>>({});
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft | null>(null);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
+  const [reportDraft, setReportDraft] = useState<ReportDraft | null>(null);
+  const [kycDraft, setKycDraft] = useState({ document_url: "", note: "" });
   const [adminDashboard, setAdminDashboard] = useState<AdminDashboard | null>(null);
 
-  const t = copy[language];
+  const t = translations[language].nav;
   const tr = useCallback(
-    (text: string) => (language === "kn" ? kannadaPhrases[text] ?? text : text),
+    (text: string) => translations[language].messages[text] ?? text,
     [language]
   );
   const categoryLabel = useCallback(
-    (category: string) => (language === "kn" ? kannadaCategories[category] ?? category : category),
+    (category: string) => translations[language].categories[category] ?? category,
     [language]
   );
   const roleLabel = useCallback(
@@ -545,10 +429,45 @@ export function MarketplaceApp() {
     [productNameLabel, statusLabel, tr]
   );
 
+  function activeProductImage(product: ProductImageSource & { id: number }) {
+    const images = productImageSet(product);
+    return activeProductImages[product.id] ?? images[0] ?? defaultProductImage;
+  }
+
+  function chooseProductImage(productId: number, image: string) {
+    setActiveProductImages((current) => ({ ...current, [productId]: image }));
+  }
+
   const showAlert = useCallback((message: string, type: AlertState["type"] = "success") => {
     setAlert({ message, type });
     window.setTimeout(() => setAlert(null), 4200);
   }, []);
+
+  useEffect(() => {
+    try {
+      const savedCart = window.localStorage.getItem("nammaraitha_cart");
+      const savedWishlist = window.localStorage.getItem("nammaraitha_wishlist");
+
+      if (savedCart) {
+        setCartItems(JSON.parse(savedCart));
+      }
+
+      if (savedWishlist) {
+        setWishlistItems(JSON.parse(savedWishlist));
+      }
+    } catch {
+      window.localStorage.removeItem("nammaraitha_cart");
+      window.localStorage.removeItem("nammaraitha_wishlist");
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("nammaraitha_cart", JSON.stringify(cartItems));
+  }, [cartItems]);
+
+  useEffect(() => {
+    window.localStorage.setItem("nammaraitha_wishlist", JSON.stringify(wishlistItems));
+  }, [wishlistItems]);
 
   const refreshCurrentUser = useCallback(async () => {
     try {
@@ -587,11 +506,20 @@ export function MarketplaceApp() {
   }, []);
 
   const searchProducts = useCallback(async (query = "") => {
-    const results = await requestJson<SearchResult[]>(
-      `/api/search_products?query=${encodeURIComponent(query)}`
-    );
-    setSearchResults(results);
-  }, []);
+    setMarketLoading(true);
+    try {
+      const params = new URLSearchParams({ query });
+      if (currentUser) {
+        params.set("lat", String(currentUser.lat));
+        params.set("lng", String(currentUser.lng));
+      }
+      const results = await requestJson<SearchResult[]>(`/api/search_products?${params.toString()}`);
+      setSearchResults(results);
+      setMarketPage(1);
+    } finally {
+      setMarketLoading(false);
+    }
+  }, [currentUser]);
 
   const loadFarmerProfile = useCallback(
     async (farmerId: number) => {
@@ -624,6 +552,10 @@ export function MarketplaceApp() {
       lat: currentUser.lat,
       lng: currentUser.lng
     });
+    setKycDraft({
+      document_url: currentUser.kyc_document_url ?? "",
+      note: currentUser.verification_note ?? ""
+    });
 
     if (currentUser.role === "admin") {
       void loadAdminDashboard();
@@ -640,6 +572,42 @@ export function MarketplaceApp() {
     const activeOrders = farmerOrders.length;
     return { lowStock, activeOrders };
   }, [farmerOrders.length, products]);
+
+  const filteredMarketResults = useMemo(() => {
+    const minPrice = Number(marketFilters.minPrice);
+    const maxPrice = Number(marketFilters.maxPrice);
+    const minRating = Number(marketFilters.minRating);
+    const maxDistance = Number(marketFilters.maxDistance);
+
+    return [...searchResults]
+      .filter((product) => marketFilters.category === "All" || product.category === marketFilters.category)
+      .filter((product) => !Number.isFinite(minPrice) || !marketFilters.minPrice || product.price >= minPrice)
+      .filter((product) => !Number.isFinite(maxPrice) || !marketFilters.maxPrice || product.price <= maxPrice)
+      .filter((product) => !Number.isFinite(minRating) || !marketFilters.minRating || product.avg_rating >= minRating)
+      .filter(
+        (product) =>
+          !Number.isFinite(maxDistance) ||
+          !marketFilters.maxDistance ||
+          typeof product.distance_km !== "number" ||
+          product.distance_km <= maxDistance
+      )
+      .filter((product) => !marketFilters.verifiedOnly || product.farmer_verified)
+      .sort((a, b) => {
+        if (marketFilters.sort === "price_low") return a.price - b.price;
+        if (marketFilters.sort === "price_high") return b.price - a.price;
+        if (marketFilters.sort === "rating") return b.avg_rating - a.avg_rating;
+        if (marketFilters.sort === "distance") return (a.distance_km ?? 9999) - (b.distance_km ?? 9999);
+        return Number(b.is_featured) - Number(a.is_featured) || b.review_count - a.review_count;
+      });
+  }, [marketFilters, searchResults]);
+
+  const marketPageSize = 9;
+  const marketPageCount = Math.max(1, Math.ceil(filteredMarketResults.length / marketPageSize));
+  const pagedMarketResults = filteredMarketResults.slice(
+    (Math.min(marketPage, marketPageCount) - 1) * marketPageSize,
+    Math.min(marketPage, marketPageCount) * marketPageSize
+  );
+  const cartTotal = cartItems.reduce((sum, item) => sum + item.quantity * item.product.price, 0);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -721,7 +689,7 @@ export function MarketplaceApp() {
     );
   }
 
-  async function uploadImageFile(file: File, target: "product" | "profile" | "gallery") {
+  async function uploadImageFile(file: File, target: "product" | "profile" | "gallery" | "kyc") {
     setUploadingTarget(target);
 
     try {
@@ -747,8 +715,18 @@ export function MarketplaceApp() {
     if (!file) return;
     const url = await uploadImageFile(file, "product");
     if (url) {
-      setProductForm((form) => ({ ...form, image_value: url }));
+      setProductForm((form) => ({
+        ...form,
+        image_gallery: Array.from(new Set([...form.image_gallery, url])).slice(-8)
+      }));
     }
+  }
+
+  function removeProductPhoto(url: string) {
+    setProductForm((form) => ({
+      ...form,
+      image_gallery: form.image_gallery.filter((item) => item !== url)
+    }));
   }
 
   async function handleProfileImageUpload(file?: File | null) {
@@ -802,6 +780,95 @@ export function MarketplaceApp() {
     }
   }
 
+  async function handleKycUpload(file?: File | null) {
+    if (!file) return;
+    const url = await uploadImageFile(file, "kyc");
+    if (url) {
+      setKycDraft((draft) => ({ ...draft, document_url: url }));
+    }
+  }
+
+  async function submitKyc(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!kycDraft.document_url) {
+      showAlert(tr("Upload a KYC document first."), "error");
+      return;
+    }
+
+    try {
+      const response = await requestJson<{ success: boolean; message: string }>("/api/kyc", {
+        method: "POST",
+        body: JSON.stringify({
+          document_url: kycDraft.document_url,
+          note: kycDraft.note
+        })
+      });
+      showAlert(tr(response.message));
+      await refreshCurrentUser();
+    } catch (error) {
+      showAlert(error instanceof Error ? tr(error.message) : tr("KYC submission failed."), "error");
+    }
+  }
+
+  function toggleWishlist(product: SearchResult) {
+    setWishlistItems((items) => {
+      const next = { ...items };
+      if (next[product.id]) {
+        delete next[product.id];
+        showAlert(tr("Removed from wishlist."));
+      } else {
+        next[product.id] = product;
+        showAlert(tr("Added to wishlist."));
+      }
+      return next;
+    });
+  }
+
+  function addToCart(product: SearchResult) {
+    const quantity = Math.max(1, Number(orderQuantities[product.id] ?? 1));
+    setCartItems((items) => {
+      const existing = items.find((item) => item.product.id === product.id);
+      if (existing) {
+        return items.map((item) =>
+          item.product.id === product.id
+            ? { ...item, quantity: Math.min(product.quantity, item.quantity + quantity) }
+            : item
+        );
+      }
+      return [
+        ...items,
+        {
+          product,
+          quantity: Math.min(product.quantity, quantity),
+          delivery_slot: deliverySlots[0],
+          added_at: new Date().toISOString()
+        }
+      ];
+    });
+    showAlert(tr("Added to cart."));
+  }
+
+  function updateCartItem(productId: number, updates: Partial<Pick<CartItem, "quantity" | "delivery_slot">>) {
+    setCartItems((items) =>
+      items.map((item) =>
+        item.product.id === productId
+          ? {
+              ...item,
+              ...updates,
+              quantity:
+                typeof updates.quantity === "number"
+                  ? Math.max(1, Math.min(item.product.quantity, updates.quantity))
+                  : item.quantity
+            }
+          : item
+      )
+    );
+  }
+
+  function removeCartItem(productId: number) {
+    setCartItems((items) => items.filter((item) => item.product.id !== productId));
+  }
+
   function selectCatalogItem(item: (typeof productCatalog)[number]) {
     setProductForm((form) => ({
       ...form,
@@ -810,6 +877,7 @@ export function MarketplaceApp() {
       unit: item.unit,
       growth_method: item.growth_method,
       image_value: item.image,
+      image_gallery: form.name === item.name ? form.image_gallery : [],
       description:
         language === "kn"
           ? `${productNameLabel(item.name)} ನನ್ನ ಸ್ಥಳೀಯ ಫಾರ್ಮಿನಿಂದ ತಾಜಾ ಉತ್ಪನ್ನ.`
@@ -857,6 +925,7 @@ export function MarketplaceApp() {
       unit: product.unit,
       growth_method: product.growth_method,
       image_value: product.image_path ?? defaultProductImage,
+      image_gallery: product.image_gallery ?? [],
       category: product.category ?? "Produce",
       harvest_date: product.harvest_date ?? "",
       is_featured: product.is_featured
@@ -918,24 +987,66 @@ export function MarketplaceApp() {
     }
   }
 
-  function openPayment(product: Pick<SearchResult, "id" | "farmer_id" | "name" | "price" | "unit" | "image_path">) {
-    const quantity = Number(orderQuantities[product.id] ?? 1);
+  async function openPayment(
+    product: Pick<SearchResult, "id" | "farmer_id" | "name" | "price" | "unit" | "image_path" | "image_gallery" | "quantity">,
+    deliverySlot = deliverySlots[0],
+    requestedQuantity?: number
+  ) {
+    const quantity = Number(requestedQuantity ?? orderQuantities[product.id] ?? 1);
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
       showAlert(tr("Enter a valid quantity."), "error");
       return;
     }
 
-    setPaymentDraft({
-      farmer_id: product.farmer_id,
-      product_id: product.id,
-      name: product.name,
-      price: product.price,
-      unit: product.unit,
-      image_path: product.image_path,
-      quantity,
-      total: quantity * product.price
-    });
+    if (quantity > product.quantity) {
+      showAlert(tr("Requested quantity is not available."), "error");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const reservation = await requestJson<InventoryReservation & { success: boolean }>("/api/reserve_inventory", {
+        method: "POST",
+        body: JSON.stringify({
+          farmer_id: product.farmer_id,
+          product_id: product.id,
+          quantity
+        })
+      });
+
+      setPaymentDraft({
+        farmer_id: product.farmer_id,
+        product_id: product.id,
+        name: product.name,
+        price: product.price,
+        unit: product.unit,
+        image_path: activeProductImage(product),
+        quantity,
+        total: quantity * product.price,
+        reservation_id: reservation.reservation_id,
+        reservation_expires_at: reservation.expires_at,
+        delivery_slot: deliverySlot
+      });
+      showAlert(tr("Stock reserved for checkout."));
+    } catch (error) {
+      showAlert(error instanceof Error ? tr(error.message) : tr("Could not reserve stock."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function releasePaymentReservation() {
+    if (!paymentDraft?.reservation_id) {
+      setPaymentDraft(null);
+      return;
+    }
+
+    await requestJson("/api/release_reservation", {
+      method: "POST",
+      body: JSON.stringify({ reservation_id: paymentDraft.reservation_id })
+    }).catch(() => null);
+    setPaymentDraft(null);
   }
 
   async function confirmPayment(success: boolean) {
@@ -943,7 +1054,7 @@ export function MarketplaceApp() {
 
     if (!success) {
       showAlert(tr("Payment declined."), "error");
-      setPaymentDraft(null);
+      await releasePaymentReservation();
       return;
     }
 
@@ -954,10 +1065,13 @@ export function MarketplaceApp() {
           farmer_id: paymentDraft.farmer_id,
           product_id: paymentDraft.product_id,
           quantity: paymentDraft.quantity,
-          total_amount: paymentDraft.total
+          total_amount: paymentDraft.total,
+          reservation_id: paymentDraft.reservation_id,
+          delivery_slot: paymentDraft.delivery_slot
         })
       });
       showAlert(tr(response.message));
+      setCartItems((items) => items.filter((item) => item.product.id !== paymentDraft.product_id));
       setPaymentDraft(null);
       await Promise.all([searchProducts(searchQuery), loadBuyerDashboard()]);
       if (selectedFarmer) {
@@ -985,9 +1099,65 @@ export function MarketplaceApp() {
       showAlert(tr(response.message));
       setReviewDraft(null);
       await loadBuyerDashboard();
+      if (selectedFarmer) {
+        await loadFarmerProfile(selectedFarmer.farmer.id);
+      }
     } catch (error) {
       showAlert(error instanceof Error ? tr(error.message) : tr("Review failed."), "error");
     }
+  }
+
+  async function submitReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reportDraft) return;
+
+    try {
+      const response = await requestJson<{ success: boolean; message: string }>("/api/report", {
+        method: "POST",
+        body: JSON.stringify(reportDraft)
+      });
+      showAlert(tr(response.message));
+      setReportDraft(null);
+    } catch (error) {
+      showAlert(error instanceof Error ? tr(error.message) : tr("Report failed."), "error");
+    }
+  }
+
+  async function updateTracking(orderId: number, trackingStatus: TrackingStatus) {
+    try {
+      const response = await requestJson<{ success: boolean; message: string }>(`/api/update_tracking/${orderId}`, {
+        method: "POST",
+        body: JSON.stringify({
+          tracking_status: trackingStatus,
+          tracking_note: trackingStatus === "out_for_delivery" ? "Farmer has started delivery." : ""
+        })
+      });
+      showAlert(tr(response.message));
+      await loadFarmerDashboard();
+    } catch (error) {
+      showAlert(error instanceof Error ? tr(error.message) : tr("Tracking update failed."), "error");
+    }
+  }
+
+  async function moderate(targetType: "kyc" | "report" | "review", id: number, action: "approve" | "reject" | "hide" | "restore") {
+    try {
+      const response = await requestJson<{ success: boolean; message: string }>("/api/admin/moderation", {
+        method: "POST",
+        body: JSON.stringify({
+          target_type: targetType,
+          id,
+          action
+        })
+      });
+      showAlert(tr(response.message));
+      await loadAdminDashboard();
+    } catch (error) {
+      showAlert(error instanceof Error ? tr(error.message) : tr("Moderation action failed."), "error");
+    }
+  }
+
+  function exportBackup() {
+    window.open("/api/admin/backup", "_blank", "noopener,noreferrer");
   }
 
   function renderAuth() {
@@ -1003,7 +1173,7 @@ export function MarketplaceApp() {
               <p>ನಮ್ಮ ರೈತ</p>
             </div>
           </div>
-          <img
+          <img loading="lazy" decoding="async"
             src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1400&q=80"
             alt="Green farm field"
           />
@@ -1215,6 +1385,10 @@ export function MarketplaceApp() {
                 <BadgeCheck size={15} />
                 {analytics?.review_count ?? 0} {tr("Reviews")}
               </span>
+              <StatusPill
+                status={currentUser?.verification_status ?? "unsubmitted"}
+                label={tr(currentUser?.verification_status ?? "unsubmitted")}
+              />
             </div>
           </div>
           <button className="primary-button fit" type="button" onClick={() => setFarmerTab("profile")}>
@@ -1231,7 +1405,7 @@ export function MarketplaceApp() {
             </div>
             {products.slice(0, 4).map((product) => (
               <div className="mini-row" key={product.id}>
-                <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
+                <img loading="lazy" decoding="async" src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
                 <div>
                   <strong>{productNameLabel(product.name)}</strong>
                   <span>
@@ -1326,18 +1500,25 @@ export function MarketplaceApp() {
                 type="button"
                 onClick={() => selectCatalogItem(item)}
               >
-                <img src={item.image} alt={item.name} onError={fallbackImageOnError} />
+                <img loading="lazy" decoding="async" src={item.image} alt={item.name} onError={fallbackImageOnError} />
                 <span>{productNameLabel(item.name)}</span>
               </button>
             ))}
           </div>
 
           <form className="product-form" onSubmit={saveProduct}>
-            <div className="image-upload-panel">
-              <img src={productImage(productForm.image_value, productForm.name)} alt={productForm.name || "Product"} onError={fallbackImageOnError} />
+            <div className="image-upload-panel product-image-panel">
+              <figure className="product-default-photo">
+                <img loading="lazy" decoding="async"
+                  src={productImage(productForm.image_value, productForm.name)}
+                  alt={productForm.name || "Product"}
+                  onError={fallbackImageOnError}
+                />
+                <figcaption>{tr("Default")}</figcaption>
+              </figure>
               <div>
                 <strong>{tr("Product photo")}</strong>
-                <p className="muted">{tr("Catalog image is used by default. Upload your own farm photo to replace it.")}</p>
+                <p className="muted">{tr("Catalog image stays first. Farmer photos are added beside it.")}</p>
                 <div className="upload-actions">
                   <label className="upload-button">
                     <Upload size={17} />
@@ -1346,7 +1527,11 @@ export function MarketplaceApp() {
                       accept="image/*"
                       className="file-input"
                       type="file"
-                      onChange={(event) => void handleProductImageUpload(event.target.files?.[0])}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = "";
+                        void handleProductImageUpload(file);
+                      }}
                     />
                   </label>
                   <label className="upload-button">
@@ -1357,10 +1542,29 @@ export function MarketplaceApp() {
                       capture="environment"
                       className="file-input"
                       type="file"
-                      onChange={(event) => void handleProductImageUpload(event.target.files?.[0])}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = "";
+                        void handleProductImageUpload(file);
+                      }}
                     />
                   </label>
                   {uploadingTarget === "product" && <span className="muted">{tr("Uploading...")}</span>}
+                </div>
+                <div className="product-photo-strip" aria-label={tr("Farmer photos")}>
+                  {productForm.image_gallery.map((item, index) => (
+                    <figure className="product-photo-thumb" key={item}>
+                      <img loading="lazy" decoding="async" src={item} alt={`${productForm.name} ${index + 1}`} onError={fallbackImageOnError} />
+                      <button
+                        aria-label={tr("Remove photo")}
+                        className="thumb-remove"
+                        type="button"
+                        onClick={() => removeProductPhoto(item)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </figure>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1474,7 +1678,21 @@ export function MarketplaceApp() {
         <section className="product-list">
           {products.map((product) => (
             <article className="product-card" key={product.id}>
-              <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
+              <div className="product-card-media">
+                <img loading="lazy" decoding="async" src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
+                {!!product.image_gallery?.length && (
+                  <div className="product-card-thumbs">
+                    {product.image_gallery.map((image, index) => (
+                      <img loading="lazy" decoding="async"
+                        key={image}
+                        src={image}
+                        alt={`${product.name} uploaded photo ${index + 1}`}
+                        onError={fallbackImageOnError}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="product-card-body">
                 <div className="product-title-row">
                   <div>
@@ -1545,10 +1763,23 @@ export function MarketplaceApp() {
                   {tr("Mobile")} {order.mobile || "N/A"} - {tr("ordered")} {formatDate(order.timestamp)}
                 </p>
                 <p className="muted">{tr("Payment")} {order.payment_reference || tr("recorded")}</p>
+                {order.delivery_slot && <p className="muted">{tr("Delivery slot")}: {tr(order.delivery_slot)}</p>}
+                <OrderTracker
+                  status={order.tracking_status}
+                  labels={[tr("Ordered"), tr("Packed"), tr("Out for delivery"), tr("Delivered")]}
+                />
               </div>
               <div className="order-side">
                 <StatusPill status={order.status} label={statusLabel(order.status)} />
                 <strong>{formatMoney(order.quantity * order.product_price)}</strong>
+                <button className="secondary-button fit" type="button" onClick={() => void updateTracking(order.id, "packed")}>
+                  <PackageCheck size={17} />
+                  {tr("Packed")}
+                </button>
+                <button className="secondary-button fit" type="button" onClick={() => void updateTracking(order.id, "out_for_delivery")}>
+                  <Truck size={17} />
+                  {tr("Out for delivery")}
+                </button>
                 <button className="primary-button fit" type="button" onClick={() => markDelivered(order.id)}>
                   <Truck size={17} />
                   {tr("Delivered")}
@@ -1642,11 +1873,12 @@ export function MarketplaceApp() {
       <div className="content-stack">
         <section className="panel split-panel profile-main">
           <div className="profile-id">
-            <img src={productImage(profileForm.profile_pic)} alt={currentUser?.name ?? "Profile"} onError={fallbackImageOnError} />
+            <img loading="lazy" decoding="async" src={productImage(profileForm.profile_pic)} alt={currentUser?.name ?? "Profile"} onError={fallbackImageOnError} />
             <div>
               <h2>{currentUser?.name}</h2>
               <p>@{currentUser?.username}</p>
               <span>{roleLabel(currentUser?.role)}</span>
+              <VerificationBadge status={currentUser?.verification_status} label={tr("Verified farmer")} />
             </div>
           </div>
           <div className="meta-row">
@@ -1693,7 +1925,7 @@ export function MarketplaceApp() {
           )}
           <div className="form-grid two">
             <div className="image-upload-panel compact-upload">
-              <img src={productImage(profileForm.profile_pic)} alt="Profile preview" onError={fallbackImageOnError} />
+              <img loading="lazy" decoding="async" src={productImage(profileForm.profile_pic)} alt="Profile preview" onError={fallbackImageOnError} />
               <div>
                 <strong>{tr("Profile photo")}</strong>
                 <p className="muted">{tr("Choose a clear face or farm logo photo.")}</p>
@@ -1724,7 +1956,7 @@ export function MarketplaceApp() {
               </div>
             </div>
             <div className="image-upload-panel compact-upload">
-              <img
+              <img loading="lazy" decoding="async"
                 src={productImage(latestGalleryItem)}
                 alt="Gallery preview"
                 onError={fallbackImageOnError}
@@ -1781,10 +2013,52 @@ export function MarketplaceApp() {
           </button>
         </form>
 
+        {currentUser?.role === "farmer" && (
+          <form className="panel product-form" onSubmit={submitKyc}>
+            <div className="panel-title">
+              <h3>{tr("KYC verification")}</h3>
+              <StatusPill status={currentUser.verification_status} label={tr(currentUser.verification_status)} />
+            </div>
+            <div className="image-upload-panel compact-upload">
+              <img loading="lazy" decoding="async" src={productImage(kycDraft.document_url || currentUser.kyc_document_url)} alt="KYC document" onError={fallbackImageOnError} />
+              <div>
+                <strong>{tr("Verification document")}</strong>
+                <p className="muted">{tr("Upload a land record, FPO card, or farm identity proof for admin approval.")}</p>
+                <div className="upload-actions">
+                  <label className="upload-button">
+                    <Upload size={17} />
+                    {tr("Upload document")}
+                    <input
+                      accept="image/*"
+                      className="file-input"
+                      type="file"
+                      onChange={(event) => void handleKycUpload(event.target.files?.[0])}
+                    />
+                  </label>
+                  {uploadingTarget === "kyc" && <span className="muted">{tr("Uploading...")}</span>}
+                </div>
+              </div>
+            </div>
+            <label>
+              {tr("Admin note")}
+              <textarea
+                value={kycDraft.note}
+                onChange={(event) => setKycDraft({ ...kycDraft, note: event.target.value })}
+                placeholder={tr("Example: Land record for Mandya farm attached.")}
+              />
+            </label>
+            {currentUser.verification_note && <p className="muted">{currentUser.verification_note}</p>}
+            <button className="primary-button fit" type="submit">
+              <FileCheck size={17} />
+              {tr("Submit KYC")}
+            </button>
+          </form>
+        )}
+
         <section className="gallery-grid">
           {galleryItems.map((item) => (
             <figure className="gallery-card" key={item}>
-              <img src={item} alt="Farm gallery item" onError={fallbackImageOnError} />
+              <img loading="lazy" decoding="async" src={item} alt="Farm gallery item" onError={fallbackImageOnError} />
             </figure>
           ))}
           {!galleryItems.length && (
@@ -1806,7 +2080,7 @@ export function MarketplaceApp() {
     return (
       <section className="panel farmer-profile-view">
         <div className="farmer-profile-head">
-          <img
+          <img loading="lazy" decoding="async"
             src={productImage(selectedFarmer.farmer.profile_pic)}
             alt={selectedFarmer.farmer.name}
             onError={fallbackImageOnError}
@@ -1814,6 +2088,7 @@ export function MarketplaceApp() {
           <div>
             <p className="eyebrow">{tr("Farmer profile")}</p>
             <h3>{selectedFarmer.farmer.name}</h3>
+            <VerificationBadge status={selectedFarmer.farmer.verification_status} label={tr("Verified farmer")} />
             <p>{selectedFarmer.farmer.farm_details || tr("No farm description added.")}</p>
             <div className="meta-row">
               <span>
@@ -1824,9 +2099,27 @@ export function MarketplaceApp() {
               <span>{selectedFarmer.reviews.length} {tr("Reviews")}</span>
             </div>
           </div>
-          <button className="icon-button" type="button" title={tr("Close")} onClick={() => setSelectedFarmer(null)}>
-            <X size={18} />
-          </button>
+          <div className="profile-action-stack">
+            <button
+              className="icon-button"
+              type="button"
+              title={tr("Report")}
+              onClick={() =>
+                setReportDraft({
+                  target_type: "farmer",
+                  target_id: selectedFarmer.farmer.id,
+                  title: selectedFarmer.farmer.name,
+                  reason: "Profile concern",
+                  details: ""
+                })
+              }
+            >
+              <Flag size={18} />
+            </button>
+            <button className="icon-button" type="button" title={tr("Close")} onClick={() => setSelectedFarmer(null)}>
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="meta-row">
@@ -1847,7 +2140,7 @@ export function MarketplaceApp() {
         <div className="farmer-gallery-grid">
           {farmerGallery.map((item) => (
             <figure className="gallery-card" key={item}>
-              <img src={item} alt={selectedFarmer.farmer.name} onError={fallbackImageOnError} />
+              <img loading="lazy" decoding="async" src={item} alt={selectedFarmer.farmer.name} onError={fallbackImageOnError} />
             </figure>
           ))}
           {!farmerGallery.length && <EmptyState>{tr("No gallery photos yet")}</EmptyState>}
@@ -1858,35 +2151,57 @@ export function MarketplaceApp() {
           <span>{selectedFarmer.products.length}</span>
         </div>
         <div className="market-grid compact-grid">
-          {selectedFarmer.products.map((product) => (
-            <article className="market-card" key={product.id}>
-              <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
-              <div className="market-card-body">
-                <h3>{productNameLabel(product.name)}</h3>
-                <p>{product.growth_method}</p>
-                <strong>{formatMoney(product.price)} / {product.unit}</strong>
-                <div className="order-row">
-                  <input
-                    min="1"
-                    max={product.quantity}
-                    type="number"
-                    value={orderQuantities[product.id] ?? "1"}
-                    onChange={(event) =>
-                      setOrderQuantities({ ...orderQuantities, [product.id]: event.target.value })
-                    }
-                  />
-                  <button
-                    className="primary-button fit"
-                    type="button"
-                    onClick={() => openPayment(product)}
-                  >
-                    <ShoppingBasket size={17} />
-                    {tr("Order")}
-                  </button>
+          {selectedFarmer.products.map((product) => {
+            const images = productImageSet(product);
+            const activeImage = activeProductImage(product);
+
+            return (
+              <article className="market-card" key={product.id}>
+                <div className="market-media compact-market-media">
+                  <img loading="lazy" decoding="async" src={activeImage} alt={product.name} onError={fallbackImageOnError} />
                 </div>
-              </div>
-            </article>
-          ))}
+                <div className="market-card-body">
+                  <h3>{productNameLabel(product.name)}</h3>
+                  {images.length > 1 && (
+                    <div className="market-thumbs" aria-label={tr("Farmer photos")}>
+                      {images.map((image, index) => (
+                        <button
+                          key={image}
+                          className={activeImage === image ? "market-thumb active" : "market-thumb"}
+                          type="button"
+                          onClick={() => chooseProductImage(product.id, image)}
+                          aria-label={`${product.name} photo ${index + 1}`}
+                        >
+                          <img loading="lazy" decoding="async" src={image} alt="" onError={fallbackImageOnError} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p>{product.growth_method}</p>
+                  <strong>{formatMoney(product.price)} / {product.unit}</strong>
+                  <div className="order-row">
+                    <input
+                      min="1"
+                      max={product.quantity}
+                      type="number"
+                      value={orderQuantities[product.id] ?? "1"}
+                      onChange={(event) =>
+                        setOrderQuantities({ ...orderQuantities, [product.id]: event.target.value })
+                      }
+                    />
+                    <button
+                      className="primary-button fit"
+                      type="button"
+                      onClick={() => void openPayment(product)}
+                    >
+                      <ShoppingBasket size={17} />
+                      {tr("Order")}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
 
         <div className="review-list">
@@ -1895,6 +2210,24 @@ export function MarketplaceApp() {
               <StarsDisplay rating={review.rating} />
               <strong>{review.reviewer_username}</strong>
               <p>{review.comment}</p>
+              {review.id && (
+                <button
+                  className="ghost-button fit"
+                  type="button"
+                  onClick={() =>
+                    setReportDraft({
+                      target_type: "review",
+                      target_id: review.id ?? 0,
+                      title: `${tr("Review")} #${review.id}`,
+                      reason: "Fake review",
+                      details: ""
+                    })
+                  }
+                >
+                  <Flag size={15} />
+                  {tr("Report")}
+                </button>
+              )}
             </div>
           ))}
           {!selectedFarmer.reviews.length && <EmptyState>{tr("No reviews yet.")}</EmptyState>}
@@ -1924,18 +2257,164 @@ export function MarketplaceApp() {
               {tr("Search")}
             </button>
           </form>
+          <div className="filter-panel">
+            <span className="section-title">
+              <SlidersHorizontal size={17} />
+              {tr("Filters")}
+            </span>
+            <select
+              value={marketFilters.category}
+              onChange={(event) => {
+                setMarketFilters({ ...marketFilters, category: event.target.value });
+                setMarketPage(1);
+              }}
+            >
+              <option value="All">{tr("All categories")}</option>
+              {productCategories.map((category) => (
+                <option key={category} value={category}>
+                  {categoryLabel(category)}
+                </option>
+              ))}
+            </select>
+            <input
+              min="0"
+              placeholder={tr("Min price")}
+              type="number"
+              value={marketFilters.minPrice}
+              onChange={(event) => {
+                setMarketFilters({ ...marketFilters, minPrice: event.target.value });
+                setMarketPage(1);
+              }}
+            />
+            <input
+              min="0"
+              placeholder={tr("Max price")}
+              type="number"
+              value={marketFilters.maxPrice}
+              onChange={(event) => {
+                setMarketFilters({ ...marketFilters, maxPrice: event.target.value });
+                setMarketPage(1);
+              }}
+            />
+            <select
+              value={marketFilters.minRating}
+              onChange={(event) => {
+                setMarketFilters({ ...marketFilters, minRating: event.target.value });
+                setMarketPage(1);
+              }}
+            >
+              <option value="">{tr("Any rating")}</option>
+              <option value="3">3+</option>
+              <option value="4">4+</option>
+              <option value="4.5">4.5+</option>
+            </select>
+            <input
+              min="1"
+              placeholder={tr("Max km")}
+              type="number"
+              value={marketFilters.maxDistance}
+              onChange={(event) => {
+                setMarketFilters({ ...marketFilters, maxDistance: event.target.value });
+                setMarketPage(1);
+              }}
+            />
+            <select
+              value={marketFilters.sort}
+              onChange={(event) => setMarketFilters({ ...marketFilters, sort: event.target.value as MarketFilters["sort"] })}
+            >
+              <option value="recommended">{tr("Recommended")}</option>
+              <option value="price_low">{tr("Price low to high")}</option>
+              <option value="price_high">{tr("Price high to low")}</option>
+              <option value="rating">{tr("Top rated")}</option>
+              <option value="distance">{tr("Nearest")}</option>
+            </select>
+            <label className="check-row compact-check">
+              <input
+                checked={marketFilters.verifiedOnly}
+                type="checkbox"
+                onChange={(event) => {
+                  setMarketFilters({ ...marketFilters, verifiedOnly: event.target.checked });
+                  setMarketPage(1);
+                }}
+              />
+              {tr("Verified")}
+            </label>
+          </div>
+
         </section>
 
         {renderSelectedFarmerProfile()}
 
         <section className="market-grid">
-          {searchResults.map((product) => (
-            <article className="market-card" key={product.id}>
-              <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
-              <div className="market-card-body">
-                <div className="product-title-row">
-                  <div>
-                    <h3>{productNameLabel(product.name)}</h3>
+          {marketLoading &&
+            Array.from({ length: 6 }).map((_, index) => (
+              <div className="market-card market-skeleton" key={index}>
+                <span />
+                <div>
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              </div>
+            ))}
+
+          {!marketLoading && pagedMarketResults.map((product) => {
+            const images = productImageSet(product);
+            const activeImage = activeProductImage(product);
+            const discount = savingsPercent(product);
+
+            return (
+              <article className="market-card featured-market-card" key={product.id}>
+                <div className="market-media">
+                  <img loading="lazy" decoding="async" src={activeImage} alt={product.name} onError={fallbackImageOnError} />
+                  {discount > 0 && <span className="market-badge">{discount}% off</span>}
+                  <button
+                    className={wishlistItems[product.id] ? "floating-icon-button active" : "floating-icon-button"}
+                    type="button"
+                    title={tr("Wishlist")}
+                    onClick={() => toggleWishlist(product)}
+                  >
+                    <Heart size={18} fill="currentColor" />
+                  </button>
+                  {product.is_featured && (
+                    <span className="fresh-badge">
+                      <Leaf size={14} />
+                      {tr("Farm pick")}
+                    </span>
+                  )}
+                </div>
+
+                <div className="market-card-body">
+                  <div className="market-card-top">
+                    <div>
+                      <span className="category-chip">{categoryLabel(product.category || "Produce")}</span>
+                      <h3>{productNameLabel(product.name)}</h3>
+                    </div>
+                    <div className="rating-chip">
+                      <StarsDisplay rating={product.avg_rating} />
+                      <span>{product.review_count ? product.avg_rating.toFixed(1) : tr("New")}</span>
+                    </div>
+                  </div>
+
+                  {images.length > 1 && (
+                    <div className="market-thumbs" aria-label={tr("Farmer photos")}>
+                      {images.map((image, index) => (
+                        <button
+                          key={image}
+                          className={activeImage === image ? "market-thumb active" : "market-thumb"}
+                          type="button"
+                          onClick={() => chooseProductImage(product.id, image)}
+                          aria-label={`${product.name} photo ${index + 1}`}
+                        >
+                          <img loading="lazy" decoding="async" src={image} alt="" onError={fallbackImageOnError} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="market-description">{product.description}</p>
+
+                  <div className="farmer-line">
                     <button
                       className="link-button"
                       type="button"
@@ -1943,49 +2422,98 @@ export function MarketplaceApp() {
                     >
                       {product.farmer_name}
                     </button>
+                    <VerificationBadge status={product.farmer_verification_status} label={tr("Verified farmer")} />
+                    {product.distance_label && (
+                      <span>
+                        <MapPin size={15} />
+                        {product.distance_label}
+                      </span>
+                    )}
+                    <span>
+                      <Store size={15} />
+                      {product.quantity} {product.unit} available
+                    </span>
                   </div>
-                  <span className="discount-price">{formatMoney(product.price)}</span>
+
+                  <div className="market-quality-row">
+                    <span>
+                      <Leaf size={15} />
+                      {product.growth_method}
+                    </span>
+                  </div>
+
+                  <div className="buy-panel">
+                    <div>
+                      <span className="price-label">{tr("Market")} <del>{formatMoney(product.market_price)}</del></span>
+                      <strong className="discount-price">{formatMoney(product.price)} / {product.unit}</strong>
+                    </div>
+                    <div className="order-row compact-order-row">
+                      <input
+                        min="1"
+                        max={product.quantity}
+                        type="number"
+                        value={orderQuantities[product.id] ?? "1"}
+                        onChange={(event) =>
+                          setOrderQuantities({ ...orderQuantities, [product.id]: event.target.value })
+                        }
+                      />
+                      <button className="secondary-button fit" type="button" onClick={() => addToCart(product)}>
+                        <ShoppingCart size={17} />
+                        {tr("Cart")}
+                      </button>
+                      <button className="primary-button fit" type="button" onClick={() => void openPayment(product)}>
+                        <ShoppingBasket size={17} />
+                        {tr("Order")}
+                      </button>
+                      <button
+                        className="ghost-button fit"
+                        type="button"
+                        onClick={() =>
+                          setReportDraft({
+                            target_type: "product",
+                            target_id: product.id,
+                            title: product.name,
+                            reason: "Misleading listing",
+                            details: ""
+                          })
+                        }
+                      >
+                        <Flag size={16} />
+                        {tr("Report")}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="meta-row">
-                  <span>
-                    <Leaf size={15} />
-                    {product.growth_method}
-                  </span>
-                  <span>
-                    <Store size={15} />
-                    {product.quantity} {product.unit}
-                  </span>
-                </div>
-                <p>{product.description}</p>
-                <div className="price-row">
-                  <span>
-                    {tr("Market")} <del>{formatMoney(product.market_price)}</del>
-                  </span>
-                  <span>
-                    <StarsDisplay rating={product.avg_rating} />
-                    {product.review_count ? product.avg_rating.toFixed(1) : tr("New")}
-                  </span>
-                </div>
-                <div className="order-row">
-                  <input
-                    min="1"
-                    max={product.quantity}
-                    type="number"
-                    value={orderQuantities[product.id] ?? "1"}
-                    onChange={(event) =>
-                      setOrderQuantities({ ...orderQuantities, [product.id]: event.target.value })
-                    }
-                  />
-                  <button className="primary-button fit" type="button" onClick={() => openPayment(product)}>
-                    <ShoppingBasket size={17} />
-                    {tr("Order")}
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-          {!searchResults.length && <EmptyState>{tr("No products found.")}</EmptyState>}
+              </article>
+            );
+          })}
+          {!marketLoading && !filteredMarketResults.length && <EmptyState>{tr("No products found.")}</EmptyState>}
         </section>
+        {!marketLoading && filteredMarketResults.length > marketPageSize && (
+          <div className="pagination-row">
+            <button
+              className="secondary-button fit"
+              type="button"
+              disabled={marketPage <= 1}
+              onClick={() => setMarketPage((page) => Math.max(1, page - 1))}
+            >
+              <ChevronLeft size={16} />
+              {tr("Previous")}
+            </button>
+            <span>
+              {marketPage} / {marketPageCount}
+            </span>
+            <button
+              className="secondary-button fit"
+              type="button"
+              disabled={marketPage >= marketPageCount}
+              onClick={() => setMarketPage((page) => Math.min(marketPageCount, page + 1))}
+            >
+              {tr("Next")}
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -2020,6 +2548,7 @@ export function MarketplaceApp() {
                 <Sprout size={18} />
               </span>
               <strong>{farmer.name}</strong>
+              <VerificationBadge status={farmer.verification_status} label={tr("Verified farmer")} />
               <span>{farmer.product_count} {tr("Products")}</span>
               <StarsDisplay rating={farmer.avg_rating} />
             </button>
@@ -2027,6 +2556,102 @@ export function MarketplaceApp() {
         </section>
 
         {renderSelectedFarmerProfile()}
+      </div>
+    );
+  }
+
+  function renderCart() {
+    const wishlist = Object.values(wishlistItems);
+
+    return (
+      <div className="content-stack">
+        <section className="panel">
+          <div className="panel-title">
+            <h3>{tr("Cart")}</h3>
+            <span>{cartItems.length} {tr("items")} - {formatMoney(cartTotal)}</span>
+          </div>
+          <div className="cart-list">
+            {cartItems.map((item) => (
+              <article className="cart-row" key={item.product.id}>
+                <img loading="lazy" decoding="async" src={productImage(item.product.image_path, item.product.name)} alt={item.product.name} onError={fallbackImageOnError} />
+                <div>
+                  <h3>{productNameLabel(item.product.name)}</h3>
+                  <p>{item.product.farmer_name}</p>
+                  <VerificationBadge status={item.product.farmer_verification_status} label={tr("Verified farmer")} />
+                  <strong>{formatMoney(item.product.price)} / {item.product.unit}</strong>
+                </div>
+                <label>
+                  {tr("Quantity")}
+                  <input
+                    min="1"
+                    max={item.product.quantity}
+                    type="number"
+                    value={item.quantity}
+                    onChange={(event) => updateCartItem(item.product.id, { quantity: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  {tr("Delivery slot")}
+                  <select
+                    value={item.delivery_slot}
+                    onChange={(event) => updateCartItem(item.product.id, { delivery_slot: event.target.value })}
+                  >
+                    {deliverySlots.map((slot) => (
+                      <option key={slot} value={slot}>
+                        {tr(slot)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="cart-actions">
+                  <button
+                    className="primary-button fit"
+                    type="button"
+                    onClick={() => void openPayment(item.product, item.delivery_slot, item.quantity)}
+                  >
+                    <CreditCard size={17} />
+                    {tr("Checkout")}
+                  </button>
+                  <button className="ghost-button fit" type="button" onClick={() => removeCartItem(item.product.id)}>
+                    <Trash2 size={16} />
+                    {tr("Remove")}
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!cartItems.length && <EmptyState>{tr("Your cart is empty.")}</EmptyState>}
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-title">
+            <h3>{tr("Wishlist")}</h3>
+            <span>{wishlist.length}</span>
+          </div>
+          <div className="admin-card-grid">
+            {wishlist.map((product) => (
+              <article className="admin-product-card" key={product.id}>
+                <img loading="lazy" decoding="async" src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
+                <div>
+                  <h3>{productNameLabel(product.name)}</h3>
+                  <p>{product.farmer_name}</p>
+                  <strong>{formatMoney(product.price)} / {product.unit}</strong>
+                  <div className="card-actions">
+                    <button className="secondary-button fit" type="button" onClick={() => addToCart(product)}>
+                      <ShoppingCart size={16} />
+                      {tr("Cart")}
+                    </button>
+                    <button className="ghost-button fit" type="button" onClick={() => toggleWishlist(product)}>
+                      <Heart size={16} fill="currentColor" />
+                      {tr("Remove")}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!wishlist.length && <EmptyState>{tr("No wishlist items yet.")}</EmptyState>}
+          </div>
+        </section>
       </div>
     );
   }
@@ -2048,26 +2673,48 @@ export function MarketplaceApp() {
                 </p>
                 <p className="muted">{tr("Ordered")} {formatDate(order.timestamp)}</p>
                 <p className="muted">{tr("Delivered")} {formatDate(order.delivered_timestamp)}</p>
+                {order.delivery_slot && <p className="muted">{tr("Delivery slot")}: {tr(order.delivery_slot)}</p>}
+                <OrderTracker
+                  status={order.tracking_status}
+                  labels={[tr("Ordered"), tr("Packed"), tr("Out for delivery"), tr("Delivered")]}
+                />
               </div>
               <div className="order-side">
                 <StatusPill status={order.status} label={statusLabel(order.status)} />
                 <strong>{formatMoney(order.quantity * order.product_price)}</strong>
+                <button
+                  className="ghost-button fit"
+                  type="button"
+                  onClick={() =>
+                    setReportDraft({
+                      target_type: "order",
+                      target_id: order.id,
+                      title: `${tr("Order")} #${order.id}`,
+                      reason: "Quality concern",
+                      details: ""
+                    })
+                  }
+                >
+                  <Flag size={15} />
+                  {tr("Report")}
+                </button>
                 {order.status === "delivered" && (
                   <button
                     className="secondary-button fit"
                     type="button"
                     onClick={() =>
                       setReviewDraft({
+                        review_id: order.review_id ?? undefined,
                         farmer_id: order.farmer_id,
                         farmer_name: order.farmer_username ?? "Farmer",
                         order_id: order.id,
-                        rating: 5,
-                        comment: ""
+                        rating: order.review_rating ?? 5,
+                        comment: order.review_comment ?? ""
                       })
                     }
                   >
                     <Star size={17} />
-                    {tr("Review")}
+                    {order.review_id ? tr("Edit review") : tr("Review")}
                   </button>
                 )}
               </div>
@@ -2123,7 +2770,7 @@ export function MarketplaceApp() {
           <div className="admin-table">
             {adminDashboard.users.map((user) => (
               <div className="admin-row" key={user.id}>
-                <img src={productImage(user.profile_pic)} alt={user.name} onError={fallbackImageOnError} />
+                <img loading="lazy" decoding="async" src={productImage(user.profile_pic)} alt={user.name} onError={fallbackImageOnError} />
                 <strong>{user.name}</strong>
                 <span>@{user.username}</span>
                 <StatusPill status={user.role} label={roleLabel(user.role)} />
@@ -2149,7 +2796,7 @@ export function MarketplaceApp() {
           <div className="admin-card-grid">
             {adminDashboard.products.map((product) => (
               <article className="admin-product-card" key={product.id}>
-                <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
+                <img loading="lazy" decoding="async" src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
                 <div>
                   <h3>{productNameLabel(product.name)}</h3>
                   <p>{product.farmer_name} (@{product.farmer_username})</p>
@@ -2189,12 +2836,117 @@ export function MarketplaceApp() {
       );
     }
 
+    if (adminTab === "moderation") {
+      return (
+        <div className="content-stack">
+          <section className="panel admin-panel">
+            <div className="panel-title">
+              <h3>{tr("KYC approvals")}</h3>
+              <span>{adminDashboard.kyc_requests.length} {tr("pending")}</span>
+            </div>
+            <div className="admin-card-grid">
+              {adminDashboard.kyc_requests.map((user) => (
+                <article className="admin-product-card" key={user.id}>
+                  <img loading="lazy" decoding="async" src={productImage(user.profile_pic)} alt={user.name} onError={fallbackImageOnError} />
+                  <div>
+                    <h3>{user.name}</h3>
+                    <p>@{user.username} - {user.mobile}</p>
+                    <p>{user.verification_note || tr("No details")}</p>
+                    {user.kyc_document_url && (
+                      <a className="link-button" href={user.kyc_document_url} target="_blank" rel="noreferrer">
+                        <FileCheck size={16} />
+                        {tr("View document")}
+                      </a>
+                    )}
+                    <div className="card-actions">
+                      <button className="primary-button fit" type="button" onClick={() => void moderate("kyc", user.id, "approve")}>
+                        <BadgeCheck size={16} />
+                        {tr("Approve")}
+                      </button>
+                      <button className="danger-button fit" type="button" onClick={() => void moderate("kyc", user.id, "reject")}>
+                        <X size={16} />
+                        {tr("Reject")}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+              {!adminDashboard.kyc_requests.length && <EmptyState>{tr("No pending KYC requests.")}</EmptyState>}
+            </div>
+          </section>
+
+          <section className="panel admin-panel">
+            <div className="panel-title">
+              <h3>{tr("Reports")}</h3>
+              <span>{adminDashboard.reports.filter((report) => report.status === "pending").length} {tr("pending")}</span>
+            </div>
+            <div className="review-list">
+              {adminDashboard.reports.map((report: Report) => (
+                <div className="review-row admin-log" key={report.id}>
+                  <span>{report.status}</span>
+                  <strong>{report.target_type} #{report.target_id}</strong>
+                  <p>{report.reason} {report.details ? `- ${report.details}` : ""}</p>
+                  <small>{tr("by")} {report.reporter_username ?? "user"} - {formatDate(report.created_at)}</small>
+                  {report.status === "pending" && (
+                    <div className="card-actions">
+                      <button className="primary-button fit" type="button" onClick={() => void moderate("report", report.id, "approve")}>
+                        <Check size={16} />
+                        {tr("Approve")}
+                      </button>
+                      <button className="ghost-button fit" type="button" onClick={() => void moderate("report", report.id, "reject")}>
+                        <X size={16} />
+                        {tr("Reject")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {!adminDashboard.reports.length && <EmptyState>{tr("No reports yet.")}</EmptyState>}
+            </div>
+          </section>
+
+          <section className="panel admin-panel">
+            <div className="panel-title">
+              <h3>{tr("Review moderation")}</h3>
+              <span>{adminDashboard.reviews.length} {tr("Reviews")}</span>
+            </div>
+            <div className="review-list">
+              {adminDashboard.reviews.slice(0, 30).map((review) => (
+                <div className="review-row" key={review.id}>
+                  <StarsDisplay rating={review.rating} />
+                  <strong>{review.reviewer_username} {"->"} {review.reviewed_username}</strong>
+                  <p>{review.comment}</p>
+                  <StatusPill status={review.moderation_status ?? "visible"} />
+                  <div className="card-actions">
+                    <button
+                      className="ghost-button fit"
+                      type="button"
+                      onClick={() =>
+                        void moderate("review", review.id ?? 0, review.moderation_status === "hidden" ? "restore" : "hide")
+                      }
+                    >
+                      <AlertTriangle size={16} />
+                      {review.moderation_status === "hidden" ? tr("Restore") : tr("Hide")}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      );
+    }
+
     if (adminTab === "logs") {
       return (
         <section className="panel admin-panel">
           <div className="panel-title">
             <h3>{tr("History and logs")}</h3>
             <span>{adminDashboard.logs.length} {tr("recent events")}</span>
+            <button className="secondary-button fit" type="button" onClick={exportBackup}>
+              <Download size={16} />
+              {tr("Export backup")}
+            </button>
           </div>
           <div className="review-list">
             {adminDashboard.logs.map((log) => (
@@ -2232,6 +2984,18 @@ export function MarketplaceApp() {
             value={formatMoney(adminDashboard.metrics.total_revenue)}
             accent="rose"
           />
+          <StatCard
+            icon={<ShieldCheck size={22} />}
+            label={tr("Pending KYC")}
+            value={adminDashboard.metrics.pending_kyc}
+            accent="amber"
+          />
+          <StatCard
+            icon={<Flag size={22} />}
+            label={tr("Pending reports")}
+            value={adminDashboard.metrics.pending_reports}
+            accent="rose"
+          />
         </div>
 
         <div className="dashboard-grid">
@@ -2245,6 +3009,7 @@ export function MarketplaceApp() {
               <span>{t.products}: {adminDashboard.metrics.total_products}</span>
               <span>{tr("Delivered")}: {adminDashboard.metrics.delivered_orders}</span>
               <span>{tr("Reviews")}: {adminDashboard.metrics.total_reviews}</span>
+              <span>{tr("Hidden reviews")}: {adminDashboard.metrics.hidden_reviews}</span>
             </div>
           </section>
           <section className="panel">
@@ -2283,6 +3048,7 @@ export function MarketplaceApp() {
     }
 
     if (buyerTab === "farmers") return renderFarmerExplorer();
+    if (buyerTab === "cart") return renderCart();
     if (buyerTab === "orders") return renderBuyerOrders();
     if (buyerTab === "profile") return renderBuyerProfile();
     return renderMarket();
@@ -2310,6 +3076,7 @@ export function MarketplaceApp() {
   ];
   const buyerNav = [
     { id: "market" as BuyerTab, label: t.marketplace, icon: <ShoppingBasket size={18} /> },
+    { id: "cart" as BuyerTab, label: `${tr("Cart")} (${cartItems.length})`, icon: <ShoppingCart size={18} /> },
     { id: "farmers" as BuyerTab, label: t.farmers, icon: <MapPin size={18} /> },
     { id: "orders" as BuyerTab, label: t.orders, icon: <ClipboardList size={18} /> },
     { id: "profile" as BuyerTab, label: t.profile, icon: <User size={18} /> }
@@ -2319,6 +3086,7 @@ export function MarketplaceApp() {
     { id: "users" as AdminTab, label: tr("Users"), icon: <Users size={18} /> },
     { id: "products" as AdminTab, label: t.products, icon: <PackagePlus size={18} /> },
     { id: "orders" as AdminTab, label: t.orders, icon: <ClipboardList size={18} /> },
+    { id: "moderation" as AdminTab, label: tr("Moderation"), icon: <ShieldCheck size={18} /> },
     { id: "logs" as AdminTab, label: tr("Logs"), icon: <Database size={18} /> }
   ];
   const activeNav =
@@ -2392,7 +3160,7 @@ export function MarketplaceApp() {
               {language === "en" ? "ಕನ್ನಡ" : "EN"}
             </button>
             <div className="profile-chip" title={currentUser.name}>
-              <img src={productImage(currentUser.profile_pic)} alt={currentUser.name} onError={fallbackImageOnError} />
+              <img loading="lazy" decoding="async" src={productImage(currentUser.profile_pic)} alt={currentUser.name} onError={fallbackImageOnError} />
               <div>
                 <strong>{currentUser.name}</strong>
                 <span>{roleLabel(currentUser.role)}</span>
@@ -2420,18 +3188,36 @@ export function MarketplaceApp() {
       {paymentDraft && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <section className="modal-card payment-card">
-            <button className="modal-close" type="button" onClick={() => setPaymentDraft(null)}>
+            <button className="modal-close" type="button" onClick={() => void releasePaymentReservation()}>
               <X size={20} />
             </button>
             <div className="modal-icon">
               <CreditCard size={28} />
             </div>
             <h2>{tr("Namma Pay")}</h2>
-            <img src={productImage(paymentDraft.image_path, paymentDraft.name)} alt={paymentDraft.name} onError={fallbackImageOnError} />
+            <img loading="lazy" decoding="async" src={productImage(paymentDraft.image_path, paymentDraft.name)} alt={paymentDraft.name} onError={fallbackImageOnError} />
             <p>
               {paymentDraft.quantity} {paymentDraft.unit} {tr("of")} {productNameLabel(paymentDraft.name)}
             </p>
             <strong>{formatMoney(paymentDraft.total)}</strong>
+            {paymentDraft.reservation_expires_at && (
+              <p className="muted">
+                <Clock size={15} /> {tr("Reserved until")} {formatDate(paymentDraft.reservation_expires_at)}
+              </p>
+            )}
+            <label>
+              {tr("Delivery slot")}
+              <select
+                value={paymentDraft.delivery_slot}
+                onChange={(event) => setPaymentDraft({ ...paymentDraft, delivery_slot: event.target.value })}
+              >
+                {deliverySlots.map((slot) => (
+                  <option key={slot} value={slot}>
+                    {tr(slot)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="modal-actions">
               <button className="primary-button" type="button" onClick={() => confirmPayment(true)}>
                 <Check size={18} />
@@ -2455,7 +3241,7 @@ export function MarketplaceApp() {
             <div className="modal-icon">
               <Camera size={28} />
             </div>
-            <h2>{tr("Review")} {reviewDraft.farmer_name}</h2>
+            <h2>{reviewDraft.review_id ? tr("Edit review") : tr("Review")} {reviewDraft.farmer_name}</h2>
             <div className="rating-picker">
               {[1, 2, 3, 4, 5].map((rating) => (
                 <button
@@ -2479,7 +3265,43 @@ export function MarketplaceApp() {
             />
             <button className="primary-button" type="submit">
               <Star size={18} />
-              {tr("Submit review")}
+              {reviewDraft.review_id ? tr("Update review") : tr("Submit review")}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {reportDraft && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <form className="modal-card" onSubmit={submitReport}>
+            <button className="modal-close" type="button" onClick={() => setReportDraft(null)}>
+              <X size={20} />
+            </button>
+            <div className="modal-icon">
+              <Flag size={28} />
+            </div>
+            <h2>{tr("Report")} {reportDraft.title}</h2>
+            <label>
+              {tr("Reason")}
+              <select
+                value={reportDraft.reason}
+                onChange={(event) => setReportDraft({ ...reportDraft, reason: event.target.value })}
+              >
+                <option value="Misleading listing">{tr("Misleading listing")}</option>
+                <option value="Quality concern">{tr("Quality concern")}</option>
+                <option value="Unsafe behaviour">{tr("Unsafe behaviour")}</option>
+                <option value="Fake review">{tr("Fake review")}</option>
+                <option value="Other concern">{tr("Other concern")}</option>
+              </select>
+            </label>
+            <textarea
+              value={reportDraft.details}
+              onChange={(event) => setReportDraft({ ...reportDraft, details: event.target.value })}
+              placeholder={tr("Describe the issue")}
+            />
+            <button className="primary-button" type="submit">
+              <Flag size={18} />
+              {tr("Submit report")}
             </button>
           </form>
         </div>

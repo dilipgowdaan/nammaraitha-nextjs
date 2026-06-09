@@ -17,11 +17,11 @@ export async function GET(_request: Request, context: Params) {
   const [{ data: user, error }, { data: reviews }] = await Promise.all([
     supabase
       .from("app_users")
-      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery")
+      .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, verification_status, verification_note, kyc_document_url, verified_at")
       .eq("id", id)
       .eq("role", "farmer")
       .maybeSingle(),
-    supabase.from("reviews").select("rating").eq("reviewed_id", id)
+    supabase.from("reviews").select("rating").eq("reviewed_id", id).eq("moderation_status", "visible")
   ]);
 
   if (error || !user) {

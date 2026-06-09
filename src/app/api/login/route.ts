@@ -3,12 +3,16 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { normalizeUser, apiError } from "@/lib/api";
 import { createSessionToken, setSessionCookie } from "@/lib/session";
+import { checkRateLimit } from "@/lib/security";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { loginSchema, schemaMessage } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, "login", 8, 60_000);
+  if (limited) return limited;
+
   const body = await request.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
 
@@ -35,7 +39,11 @@ export async function POST(request: NextRequest) {
         mobile: "N/A",
         farm_details: "Platform administrator",
         profile_pic: "https://placehold.co/96x96/2E7D32/FFFFFF?text=A",
-        gallery: []
+        gallery: [],
+        verification_status: "approved",
+        verification_note: "System administrator",
+        kyc_document_url: null,
+        verified_at: new Date().toISOString()
       }
     });
 
@@ -46,7 +54,7 @@ export async function POST(request: NextRequest) {
   const { data: user, error } = await getSupabaseAdmin()
     .from("app_users")
     .select(
-      "id, username, password_hash, role, lat, lng, name, mobile, farm_details, profile_pic, gallery"
+      "id, username, password_hash, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, verification_status, verification_note, kyc_document_url, verified_at"
     )
     .eq("username", parsed.data.username)
     .maybeSingle();

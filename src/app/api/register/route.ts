@@ -1,12 +1,16 @@
 import bcrypt from "bcryptjs";
 import type { NextRequest } from "next/server";
 import { apiError, apiOk } from "@/lib/api";
+import { checkRateLimit } from "@/lib/security";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { registerSchema, schemaMessage } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, "register", 6, 60_000);
+  if (limited) return limited;
+
   const body = await request.json().catch(() => null);
   const parsed = registerSchema.safeParse(body);
 

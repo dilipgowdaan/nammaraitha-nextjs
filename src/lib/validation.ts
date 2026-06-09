@@ -44,6 +44,7 @@ export const productSchema = z.object({
   unit: requiredText.max(24),
   growth_method: requiredText.max(120),
   image_value: z.string().trim().url().optional().or(z.literal("")),
+  image_gallery: z.array(z.string().trim().url()).max(8).optional().default([]),
   category: z.string().trim().max(48).optional().default("Produce"),
   harvest_date: z.string().trim().optional().or(z.literal("")),
   is_featured: z.boolean().optional().default(false)
@@ -62,7 +63,9 @@ export const placeOrderSchema = z.object({
   product_id: z.coerce.number().int().positive(),
   quantity: z.coerce.number().int().positive(),
   total_amount: z.coerce.number().positive().optional(),
-  payment_reference: z.string().trim().max(80).optional()
+  payment_reference: z.string().trim().max(80).optional(),
+  reservation_id: z.coerce.number().int().positive().optional(),
+  delivery_slot: z.string().trim().max(80).optional()
 });
 
 export const reviewSchema = z.object({
@@ -70,6 +73,36 @@ export const reviewSchema = z.object({
   order_id: z.coerce.number().int().positive().optional(),
   rating: z.coerce.number().int().min(1).max(5),
   comment: requiredText.max(700)
+});
+
+export const reservationSchema = z.object({
+  farmer_id: z.coerce.number().int().positive(),
+  product_id: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().positive()
+});
+
+export const reportSchema = z.object({
+  target_type: z.enum(["farmer", "product", "review", "order"]),
+  target_id: z.coerce.number().int().positive(),
+  reason: requiredText.max(120),
+  details: z.string().trim().max(700).optional().default("")
+});
+
+export const kycSchema = z.object({
+  document_url: z.string().trim().url(),
+  note: z.string().trim().max(500).optional().default("")
+});
+
+export const adminModerationSchema = z.object({
+  target_type: z.enum(["kyc", "report", "review"]),
+  id: z.coerce.number().int().positive(),
+  action: z.enum(["approve", "reject", "hide", "restore"]),
+  note: z.string().trim().max(500).optional().default("")
+});
+
+export const trackingSchema = z.object({
+  tracking_status: z.enum(["order_placed", "packed", "out_for_delivery", "delivered"]),
+  tracking_note: z.string().trim().max(240).optional().default("")
 });
 
 export function schemaMessage(error: z.ZodError) {

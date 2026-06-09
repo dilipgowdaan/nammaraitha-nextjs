@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
       order_id: review.order_id ? numberFrom(review.order_id) : null,
       rating: numberFrom(review.rating),
       comment: String(review.comment ?? ""),
+      moderation_status: review.moderation_status ?? "visible",
       created_at: review.created_at
     }))
   );

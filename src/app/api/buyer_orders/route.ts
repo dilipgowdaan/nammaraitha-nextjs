@@ -23,18 +23,28 @@ export async function GET(request: NextRequest) {
   const farmerIds = [...new Set(orders.map((order) => numberFrom(order.farmer_id)))];
   const productIds = [...new Set(orders.map((order) => numberFrom(order.product_id)))];
 
-  const [{ data: farmers }, { data: products }] = await Promise.all([
+  const orderIds = orders.map((order) => numberFrom(order.id));
+  const [{ data: farmers }, { data: products }, { data: reviews }] = await Promise.all([
     auth.supabase.from("app_users").select("id, username, name").in("id", farmerIds),
-    auth.supabase.from("products").select("id, name").in("id", productIds)
+    auth.supabase.from("products").select("id, name").in("id", productIds),
+    orderIds.length
+      ? auth.supabase
+          .from("reviews")
+          .select("id, order_id, rating, comment")
+          .eq("reviewer_id", auth.user.id)
+          .in("order_id", orderIds)
+      : Promise.resolve({ data: [] })
   ]);
 
   const farmerMap = new Map((farmers ?? []).map((farmer) => [numberFrom(farmer.id), farmer]));
   const productMap = new Map((products ?? []).map((product) => [numberFrom(product.id), product]));
+  const reviewMap = new Map((reviews ?? []).map((review) => [numberFrom(review.order_id), review]));
 
   return apiOk(
     orders.map((order) => {
       const farmer = farmerMap.get(numberFrom(order.farmer_id));
       const product = productMap.get(numberFrom(order.product_id));
+      const review = reviewMap.get(numberFrom(order.id));
 
       return {
         id: numberFrom(order.id),
@@ -47,8 +57,14 @@ export async function GET(request: NextRequest) {
         product_price: numberFrom(order.product_price),
         product_unit: order.product_unit,
         payment_reference: order.payment_reference,
+        delivery_slot: order.delivery_slot ?? null,
+        tracking_status: order.tracking_status ?? "order_placed",
+        tracking_note: order.tracking_note ?? null,
         farmer_username: farmer?.username ?? "Unknown farmer",
-        product_name: product?.name ?? "Unknown product"
+        product_name: product?.name ?? "Unknown product",
+        review_id: review ? numberFrom(review.id) : null,
+        review_rating: review ? numberFrom(review.rating) : null,
+        review_comment: review ? String(review.comment ?? "") : null
       };
     })
   );

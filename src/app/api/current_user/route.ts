@@ -23,13 +23,17 @@ export async function GET(request: NextRequest) {
       mobile: "N/A",
       farm_details: "Platform administrator",
       profile_pic: "https://placehold.co/96x96/2E7D32/FFFFFF?text=A",
-      gallery: []
+      gallery: [],
+      verification_status: "approved",
+      verification_note: "System administrator",
+      kyc_document_url: null,
+      verified_at: new Date().toISOString()
     });
   }
 
   const { data, error } = await getSupabaseAdmin()
     .from("app_users")
-    .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery")
+    .select("id, username, role, lat, lng, name, mobile, farm_details, profile_pic, gallery, verification_status, verification_note, kyc_document_url, verified_at")
     .eq("id", session.userId)
     .maybeSingle();
 

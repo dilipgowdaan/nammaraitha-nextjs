@@ -17,7 +17,11 @@ export async function GET(request: NextRequest) {
       .eq("farmer_id", auth.user.id)
       .order("timestamp", { ascending: false })
       .limit(200),
-    auth.supabase.from("reviews").select("*").eq("reviewed_id", auth.user.id)
+    auth.supabase
+      .from("reviews")
+      .select("*")
+      .eq("reviewed_id", auth.user.id)
+      .eq("moderation_status", "visible")
   ]);
 
   const orderRows = orders ?? [];
@@ -77,6 +81,9 @@ export async function GET(request: NextRequest) {
       product_price: numberFrom(order.product_price),
       product_unit: order.product_unit,
       payment_reference: order.payment_reference,
+      delivery_slot: order.delivery_slot ?? null,
+      tracking_status: order.tracking_status ?? "order_placed",
+      tracking_note: order.tracking_note ?? null,
       buyer: buyerMap.get(numberFrom(order.buyer_id)) ?? "Unknown buyer",
       product: productMap.get(numberFrom(order.product_id)) ?? "Unknown product",
       product_name: productMap.get(numberFrom(order.product_id)) ?? "Unknown product",

@@ -1,5 +1,8 @@
 export type Role = "farmer" | "buyer" | "admin";
 export type OrderStatus = "pending" | "paid" | "delivered" | "cancelled";
+export type VerificationStatus = "unsubmitted" | "pending" | "approved" | "rejected";
+export type ReportStatus = "pending" | "approved" | "rejected";
+export type TrackingStatus = "order_placed" | "packed" | "out_for_delivery" | "delivered";
 
 export type UserProfile = {
   id: number;
@@ -12,6 +15,10 @@ export type UserProfile = {
   farm_details: string | null;
   profile_pic: string | null;
   gallery: string[];
+  verification_status: VerificationStatus;
+  verification_note: string | null;
+  kyc_document_url: string | null;
+  verified_at: string | null;
   created_at?: string;
 };
 
@@ -26,9 +33,11 @@ export type Product = {
   unit: string;
   growth_method: string;
   image_path: string | null;
+  image_gallery: string[];
   category: string | null;
   harvest_date: string | null;
   is_featured: boolean;
+  reserved_quantity?: number;
   created_at?: string;
 };
 
@@ -41,6 +50,7 @@ export type ProductInput = {
   unit: string;
   growth_method: string;
   image_value: string;
+  image_gallery?: string[];
   category?: string;
   harvest_date?: string;
   is_featured?: boolean;
@@ -50,8 +60,11 @@ export type SearchResult = Product & {
   farmer_username: string;
   farmer_name: string;
   farmer_mobile: string;
+  farmer_verified: boolean;
+  farmer_verification_status: VerificationStatus;
   avg_rating: number;
   review_count: number;
+  distance_km?: number;
   distance_label?: string;
 };
 
@@ -63,6 +76,7 @@ export type FarmerMapPin = {
   lng: number;
   avg_rating: number;
   product_count: number;
+  verification_status?: VerificationStatus;
 };
 
 export type MarketplaceOrder = {
@@ -77,10 +91,16 @@ export type MarketplaceOrder = {
   product_price: number;
   product_unit: string;
   payment_reference: string | null;
+  delivery_slot?: string | null;
+  tracking_status?: TrackingStatus | string | null;
+  tracking_note?: string | null;
   product_name: string;
   farmer_username?: string;
   buyer_username?: string;
   mobile?: string | null;
+  review_id?: number | null;
+  review_rating?: number | null;
+  review_comment?: string | null;
 };
 
 export type Review = {
@@ -92,7 +112,39 @@ export type Review = {
   order_id?: number | null;
   rating: number;
   comment: string;
+  moderation_status?: "visible" | "hidden";
   created_at?: string;
+};
+
+export type Report = {
+  id: number;
+  reporter_id: number;
+  reporter_username?: string;
+  target_type: "farmer" | "product" | "review" | "order";
+  target_id: number;
+  reason: string;
+  details: string | null;
+  status: ReportStatus;
+  admin_note: string | null;
+  created_at: string;
+  resolved_at: string | null;
+};
+
+export type AuditLog = {
+  id: number;
+  actor_id: number | null;
+  actor_username: string | null;
+  action: string;
+  entity_type: string | null;
+  entity_id: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type InventoryReservation = {
+  reservation_id: number;
+  expires_at: string;
+  available_quantity: number;
 };
 
 export type FarmerAnalytics = {
@@ -129,6 +181,9 @@ export type AdminDashboard = {
     total_revenue: number;
     delivered_orders: number;
     total_reviews: number;
+    pending_kyc: number;
+    pending_reports: number;
+    hidden_reviews: number;
   };
   users: UserProfile[];
   products: Array<Product & { farmer_username: string; farmer_name: string }>;
@@ -144,6 +199,9 @@ export type AdminDashboard = {
       reviewed_username: string;
     }
   >;
+  kyc_requests: UserProfile[];
+  reports: Report[];
+  audit_logs: AuditLog[];
   logs: Array<{
     id: string;
     type: string;
