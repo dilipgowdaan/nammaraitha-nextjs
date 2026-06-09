@@ -35,10 +35,15 @@ import {
   Wallet,
   X
 } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent, ReactNode, SyntheticEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FarmersMap } from "./FarmersMap";
-import { defaultProductImage, productCatalog, productCategories } from "@/lib/productCatalog";
+import {
+  catalogProductImage,
+  defaultProductImage,
+  productCatalog,
+  productCategories
+} from "@/lib/productCatalog";
 import type {
   AdminDashboard,
   FarmerAnalytics,
@@ -335,7 +340,10 @@ const kannadaPhrases: Record<string, string> = {
   "Image is too large. Keep it under 6 MB.": "ಚಿತ್ರ ತುಂಬಾ ದೊಡ್ಡದು. 6 MB ಒಳಗೆ ಇರಿಸಿ.",
   "Invalid product id.": "ಉತ್ಪನ್ನ ಐಡಿ ಸರಿಯಿಲ್ಲ.",
   "Product not found or update failed.": "ಉತ್ಪನ್ನ ಸಿಗಲಿಲ್ಲ ಅಥವಾ ನವೀಕರಣ ವಿಫಲವಾಗಿದೆ.",
+  "Farmer not found.": "ರೈತ ಸಿಗಲಿಲ್ಲ.",
   "Invalid request payload.": "ವಿನಂತಿಯ ಮಾಹಿತಿ ಸರಿಯಿಲ್ಲ.",
+  "Your uploaded products": "ನೀವು ಸೇರಿಸಿದ ಉತ್ಪನ್ನಗಳು",
+  "Catalog image is used by default. Upload your own farm photo to replace it.": "ಡೀಫಾಲ್ಟ್ ಆಗಿ ಕ್ಯಾಟಲಾಗ್ ಚಿತ್ರ ಬಳಸಲಾಗುತ್ತದೆ. ಬದಲಿಸಲು ನಿಮ್ಮ ಫಾರ್ಮ್ ಫೋಟೋ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.",
   "Tomato": "ಟೊಮೇಟೊ",
   "Onion": "ಈರುಳ್ಳಿ",
   "Brinjal": "ಬದನೆಕಾಯಿ",
@@ -359,6 +367,8 @@ const kannadaCategories: Record<string, string> = {
   Flowers: "ಹೂವುಗಳು",
   Millets: "ಸಿರಿಧಾನ್ಯಗಳು",
   Grains: "ಧಾನ್ಯಗಳು",
+  Pulses: "ಬೇಳೆಗಳು",
+  Oilseeds: "ಎಣ್ಣೆಬೀಜಗಳು",
   Spices: "ಮಸಾಲೆಗಳು",
   Greens: "ಸೊಪ್ಪುಗಳು",
   Plantation: "ತೋಟಗಾರಿಕೆ"
@@ -401,8 +411,13 @@ function formatDate(value?: string | null) {
   }).format(new Date(value));
 }
 
-function productImage(src?: string | null) {
-  return src || defaultProductImage;
+function productImage(src?: string | null, productName?: string | null) {
+  return src || catalogProductImage(productName) || defaultProductImage;
+}
+
+function fallbackImageOnError(event: SyntheticEvent<HTMLImageElement>) {
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = defaultProductImage;
 }
 
 function StarsDisplay({ rating }: { rating: number }) {
@@ -575,11 +590,21 @@ export function MarketplaceApp() {
     setSearchResults(results);
   }, []);
 
-  const loadFarmerProfile = useCallback(async (farmerId: number) => {
-    const profile = await requestJson<FarmerProfileBundle>(`/api/farmer_profile/${farmerId}`);
-    setSelectedFarmer(profile);
-    setBuyerTab("farmers");
-  }, []);
+  const loadFarmerProfile = useCallback(
+    async (farmerId: number) => {
+      setBuyerTab("farmers");
+      try {
+        const profile = await requestJson<FarmerProfileBundle>(`/api/farmer_profile/${farmerId}`);
+        setSelectedFarmer(profile);
+        window.setTimeout(() => {
+          document.querySelector(".farmer-profile-view")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 80);
+      } catch (error) {
+        showAlert(error instanceof Error ? tr(error.message) : tr("Farmer profile"), "error");
+      }
+    },
+    [showAlert, tr]
+  );
 
   useEffect(() => {
     void refreshCurrentUser();
@@ -728,7 +753,17 @@ export function MarketplaceApp() {
     if (!file) return;
     const url = await uploadImageFile(file, "profile");
     if (url) {
-      setProfileForm((form) => ({ ...form, profile_pic: url }));
+      try {
+        setProfileForm((form) => ({ ...form, profile_pic: url }));
+        setCurrentUser((user) => (user ? { ...user, profile_pic: url } : user));
+        await requestJson("/api/update_profile", {
+          method: "POST",
+          body: JSON.stringify({ profile_pic: url })
+        });
+        await refreshCurrentUser();
+      } catch (error) {
+        showAlert(error instanceof Error ? tr(error.message) : tr("Profile update failed."), "error");
+      }
     }
   }
 
@@ -736,7 +771,19 @@ export function MarketplaceApp() {
     if (!file) return;
     const url = await uploadImageFile(file, "gallery");
     if (url) {
-      setProfileForm((form) => ({ ...form, new_gallery_item: url }));
+      try {
+        setProfileForm((form) => ({ ...form, new_gallery_item: "" }));
+        setCurrentUser((user) =>
+          user ? { ...user, gallery: [...user.gallery, url].slice(-8) } : user
+        );
+        await requestJson("/api/update_profile", {
+          method: "POST",
+          body: JSON.stringify({ new_gallery_item: url })
+        });
+        await refreshCurrentUser();
+      } catch (error) {
+        showAlert(error instanceof Error ? tr(error.message) : tr("Profile update failed."), "error");
+      }
     }
   }
 
@@ -1169,7 +1216,7 @@ export function MarketplaceApp() {
             </div>
             {products.slice(0, 4).map((product) => (
               <div className="mini-row" key={product.id}>
-                <img src={productImage(product.image_path)} alt={product.name} />
+                <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
                 <div>
                   <strong>{productNameLabel(product.name)}</strong>
                   <span>
@@ -1264,7 +1311,7 @@ export function MarketplaceApp() {
                 type="button"
                 onClick={() => selectCatalogItem(item)}
               >
-                <img src={item.image} alt={item.name} />
+                <img src={item.image} alt={item.name} onError={fallbackImageOnError} />
                 <span>{productNameLabel(item.name)}</span>
               </button>
             ))}
@@ -1272,10 +1319,10 @@ export function MarketplaceApp() {
 
           <form className="product-form" onSubmit={saveProduct}>
             <div className="image-upload-panel">
-              <img src={productImage(productForm.image_value)} alt={productForm.name || "Product"} />
+              <img src={productImage(productForm.image_value, productForm.name)} alt={productForm.name || "Product"} onError={fallbackImageOnError} />
               <div>
                 <strong>{tr("Product photo")}</strong>
-                <p className="muted">{tr("Upload from gallery or take a fresh camera photo.")}</p>
+                <p className="muted">{tr("Catalog image is used by default. Upload your own farm photo to replace it.")}</p>
                 <div className="upload-actions">
                   <label className="upload-button">
                     <Upload size={17} />
@@ -1404,10 +1451,15 @@ export function MarketplaceApp() {
           </form>
         </section>
 
+        <div className="panel-title reference-title">
+          <h3>{tr("Your uploaded products")}</h3>
+          <span>{products.length}</span>
+        </div>
+
         <section className="product-list">
           {products.map((product) => (
             <article className="product-card" key={product.id}>
-              <img src={productImage(product.image_path)} alt={product.name} />
+              <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
               <div className="product-card-body">
                 <div className="product-title-row">
                   <div>
@@ -1568,11 +1620,14 @@ export function MarketplaceApp() {
   }
 
   function renderProfile() {
+    const galleryItems = currentUser?.gallery ?? [];
+    const latestGalleryItem = profileForm.new_gallery_item || galleryItems[galleryItems.length - 1];
+
     return (
       <div className="content-stack">
         <section className="panel split-panel profile-main">
           <div className="profile-id">
-            <img src={productImage(profileForm.profile_pic)} alt={currentUser?.name ?? "Profile"} />
+            <img src={productImage(profileForm.profile_pic)} alt={currentUser?.name ?? "Profile"} onError={fallbackImageOnError} />
             <div>
               <h2>{currentUser?.name}</h2>
               <p>@{currentUser?.username}</p>
@@ -1623,7 +1678,7 @@ export function MarketplaceApp() {
           )}
           <div className="form-grid two">
             <div className="image-upload-panel compact-upload">
-              <img src={productImage(profileForm.profile_pic)} alt="Profile preview" />
+              <img src={productImage(profileForm.profile_pic)} alt="Profile preview" onError={fallbackImageOnError} />
               <div>
                 <strong>{tr("Profile photo")}</strong>
                 <p className="muted">{tr("Choose a clear face or farm logo photo.")}</p>
@@ -1655,8 +1710,9 @@ export function MarketplaceApp() {
             </div>
             <div className="image-upload-panel compact-upload">
               <img
-                src={productImage(profileForm.new_gallery_item || currentUser?.gallery?.[0])}
+                src={productImage(latestGalleryItem)}
                 alt="Gallery preview"
+                onError={fallbackImageOnError}
               />
               <div>
                 <strong>{tr("Gallery photo")}</strong>
@@ -1711,10 +1767,10 @@ export function MarketplaceApp() {
         </form>
 
         <section className="gallery-grid">
-          {(currentUser?.gallery ?? []).map((item) => (
-            <img key={item} src={item} alt="Farm gallery item" />
+          {galleryItems.map((item) => (
+            <img key={item} src={item} alt="Farm gallery item" onError={fallbackImageOnError} />
           ))}
-          {!currentUser?.gallery.length && (
+          {!galleryItems.length && (
             <div className="gallery-empty">
               <ImageIcon size={28} />
               <span>{tr("No gallery photos yet")}</span>
@@ -1751,7 +1807,7 @@ export function MarketplaceApp() {
         <section className="market-grid">
           {searchResults.map((product) => (
             <article className="market-card" key={product.id}>
-              <img src={productImage(product.image_path)} alt={product.name} />
+              <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
               <div className="market-card-body">
                 <div className="product-title-row">
                   <div>
@@ -1869,7 +1925,7 @@ export function MarketplaceApp() {
             <div className="market-grid compact-grid">
               {selectedFarmer.products.map((product) => (
                 <article className="market-card" key={product.id}>
-                  <img src={productImage(product.image_path)} alt={product.name} />
+                  <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
                   <div className="market-card-body">
                     <h3>{productNameLabel(product.name)}</h3>
                     <p>{product.growth_method}</p>
@@ -2005,7 +2061,7 @@ export function MarketplaceApp() {
           <div className="admin-table">
             {adminDashboard.users.map((user) => (
               <div className="admin-row" key={user.id}>
-                <img src={productImage(user.profile_pic)} alt={user.name} />
+                <img src={productImage(user.profile_pic)} alt={user.name} onError={fallbackImageOnError} />
                 <strong>{user.name}</strong>
                 <span>@{user.username}</span>
                 <StatusPill status={user.role} label={roleLabel(user.role)} />
@@ -2031,7 +2087,7 @@ export function MarketplaceApp() {
           <div className="admin-card-grid">
             {adminDashboard.products.map((product) => (
               <article className="admin-product-card" key={product.id}>
-                <img src={productImage(product.image_path)} alt={product.name} />
+                <img src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
                 <div>
                   <h3>{productNameLabel(product.name)}</h3>
                   <p>{product.farmer_name} (@{product.farmer_username})</p>
@@ -2274,7 +2330,7 @@ export function MarketplaceApp() {
               {language === "en" ? "ಕನ್ನಡ" : "EN"}
             </button>
             <div className="profile-chip" title={currentUser.name}>
-              <img src={productImage(currentUser.profile_pic)} alt={currentUser.name} />
+              <img src={productImage(currentUser.profile_pic)} alt={currentUser.name} onError={fallbackImageOnError} />
               <div>
                 <strong>{currentUser.name}</strong>
                 <span>{roleLabel(currentUser.role)}</span>
@@ -2309,7 +2365,7 @@ export function MarketplaceApp() {
               <CreditCard size={28} />
             </div>
             <h2>{tr("Namma Pay")}</h2>
-            <img src={productImage(paymentDraft.image_path)} alt={paymentDraft.name} />
+            <img src={productImage(paymentDraft.image_path, paymentDraft.name)} alt={paymentDraft.name} onError={fallbackImageOnError} />
             <p>
               {paymentDraft.quantity} {paymentDraft.unit} {tr("of")} {productNameLabel(paymentDraft.name)}
             </p>

@@ -727,6 +727,10 @@ label {
   width: 100%;
 }
 
+.reference-title {
+  margin-top: 0.6rem;
+}
+
 .product-card,
 .market-card,
 .order-card,

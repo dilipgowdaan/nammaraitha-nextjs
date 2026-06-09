@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { apiError, apiOk, normalizeProduct, requireUser } from "@/lib/api";
-import { defaultProductImage } from "@/lib/productCatalog";
+import { catalogProductImage, defaultProductImage } from "@/lib/productCatalog";
 import { productSchema, schemaMessage } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     quantity: data.quantity,
     unit: data.unit,
     growth_method: data.growth_method,
-    image_path: data.image_value || defaultProductImage
+    image_path: data.image_value || catalogProductImage(data.name) || defaultProductImage
   };
   const enhancedProduct = {
     ...baseProduct,
