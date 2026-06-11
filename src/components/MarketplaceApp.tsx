@@ -100,6 +100,13 @@ type ProductForm = {
   is_featured: boolean;
 };
 
+type ProductCardDraft = {
+  description: string;
+  price: string;
+  quantity: string;
+  image_gallery: string[];
+};
+
 type RegisterForm = {
   username: string;
   password: string;
@@ -431,6 +438,9 @@ export function MarketplaceApp() {
 
   const [productForm, setProductForm] = useState<ProductForm>(emptyProductForm);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [productCardDrafts, setProductCardDrafts] = useState<Record<number, ProductCardDraft>>({});
+  const [savingProductId, setSavingProductId] = useState<number | null>(null);
+  const [uploadingProductEditId, setUploadingProductEditId] = useState<number | null>(null);
   const [selectedProductCategory, setSelectedProductCategory] =
     useState<(typeof productCategories)[number]>("Vegetables");
   const [uploadingTarget, setUploadingTarget] = useState<"product" | "profile" | "gallery" | "kyc" | null>(null);
@@ -814,6 +824,8 @@ export function MarketplaceApp() {
     setBuyerOrders([]);
     setSelectedFarmer(null);
     setSelectedOrderDetailId(null);
+    setEditingProductId(null);
+    setProductCardDrafts({});
     showAlert(tr("Logged out."));
   }
 
@@ -1083,16 +1095,14 @@ export function MarketplaceApp() {
 
   function resetProductForm() {
     setProductForm(emptyProductForm);
-    setEditingProductId(null);
   }
 
   async function saveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const endpoint = editingProductId ? `/api/update_product/${editingProductId}` : "/api/add_product";
     setBusy(true);
 
     try {
-      const response = await requestJson<{ success: boolean; message: string }>(endpoint, {
+      const response = await requestJson<{ success: boolean; message: string }>("/api/add_product", {
         method: "POST",
         body: JSON.stringify(productForm)
       });
@@ -1106,39 +1116,100 @@ export function MarketplaceApp() {
     }
   }
 
-  function editProduct(product: Product) {
-    setEditingProductId(product.id);
-    const nextCategory = productCategories.find((category) => category === product.category);
-    if (nextCategory) {
-      setSelectedProductCategory(nextCategory);
-    }
-    setProductForm({
-      name: product.name,
+  function productCardDraftFrom(product: Product): ProductCardDraft {
+    return {
       description: product.description,
-      market_price: String(product.market_price),
       price: String(product.price),
       quantity: String(product.quantity),
-      unit: product.unit,
-      growth_method: product.growth_method,
-      image_value: product.image_path ?? defaultProductImage,
-      image_gallery: product.image_gallery ?? [],
-      category: product.category ?? "Produce",
-      harvest_date: product.harvest_date ?? "",
-      is_featured: product.is_featured
-    });
+      image_gallery: product.image_gallery ?? []
+    };
+  }
+
+  function editProduct(product: Product) {
+    setEditingProductId(product.id);
+    setProductCardDrafts((drafts) => ({
+      ...drafts,
+      [product.id]: drafts[product.id] ?? productCardDraftFrom(product)
+    }));
     setFarmerTab("products");
   }
 
-  async function updateStock(product: Product, quantity: number) {
-    try {
-      await requestJson(`/api/update_product/${product.id}`, {
-        method: "POST",
-        body: JSON.stringify({ quantity })
+  function cancelProductCardEdit(productId: number) {
+    setEditingProductId((activeId) => (activeId === productId ? null : activeId));
+    setProductCardDrafts((drafts) => {
+      const nextDrafts = { ...drafts };
+      delete nextDrafts[productId];
+      return nextDrafts;
+    });
+  }
+
+  function updateProductCardDraft(product: Product, updates: Partial<ProductCardDraft>) {
+    setProductCardDrafts((drafts) => ({
+      ...drafts,
+      [product.id]: {
+        ...(drafts[product.id] ?? productCardDraftFrom(product)),
+        ...updates
+      }
+    }));
+  }
+
+  async function handleProductCardImageUpload(product: Product, file?: File | null) {
+    if (!file) return;
+
+    setUploadingProductEditId(product.id);
+    const url = await uploadImageFile(file, "product");
+
+    if (url) {
+      setProductCardDrafts((drafts) => {
+        const draft = drafts[product.id] ?? productCardDraftFrom(product);
+        return {
+          ...drafts,
+          [product.id]: {
+            ...draft,
+            image_gallery: Array.from(new Set([...draft.image_gallery, url])).slice(-8)
+          }
+        };
       });
-      showAlert(tr("Stock updated."));
+    }
+
+    setUploadingProductEditId(null);
+  }
+
+  function removeProductCardPhoto(product: Product, url: string) {
+    setProductCardDrafts((drafts) => {
+      const draft = drafts[product.id] ?? productCardDraftFrom(product);
+      return {
+        ...drafts,
+        [product.id]: {
+          ...draft,
+          image_gallery: draft.image_gallery.filter((item) => item !== url)
+        }
+      };
+    });
+  }
+
+  async function saveProductCardEdit(event: FormEvent<HTMLFormElement>, product: Product) {
+    event.preventDefault();
+    const draft = productCardDrafts[product.id] ?? productCardDraftFrom(product);
+    setSavingProductId(product.id);
+
+    try {
+      const response = await requestJson<{ success: boolean; message: string }>(`/api/update_product/${product.id}`, {
+        method: "POST",
+        body: JSON.stringify({
+          description: draft.description,
+          price: draft.price,
+          quantity: draft.quantity,
+          image_gallery: draft.image_gallery
+        })
+      });
+      showAlert(tr(response.message));
+      cancelProductCardEdit(product.id);
       await loadFarmerDashboard();
     } catch (error) {
-      showAlert(error instanceof Error ? tr(error.message) : tr("Stock update failed."), "error");
+      showAlert(error instanceof Error ? tr(error.message) : tr("Product save failed."), "error");
+    } finally {
+      setSavingProductId(null);
     }
   }
 
@@ -1146,6 +1217,7 @@ export function MarketplaceApp() {
     try {
       await requestJson(`/api/delete_product/${product.id}`, { method: "DELETE" });
       showAlert(`${productNameLabel(product.name)} ${tr("removed.")}`);
+      cancelProductCardEdit(product.id);
       await loadFarmerDashboard();
     } catch (error) {
       showAlert(error instanceof Error ? tr(error.message) : tr("Delete failed."), "error");
@@ -1758,13 +1830,7 @@ export function MarketplaceApp() {
       <div className="content-stack">
         <section className="panel">
           <div className="panel-title">
-            <h3>{editingProductId ? tr("Edit product") : tr("Add product")}</h3>
-            {editingProductId && (
-              <button className="ghost-button" type="button" onClick={resetProductForm}>
-                <X size={16} />
-                {tr("Cancel")}
-              </button>
-            )}
+            <h3>{tr("Add product")}</h3>
           </div>
 
           <div className="category-filter">
@@ -1849,7 +1915,7 @@ export function MarketplaceApp() {
                       }}
                     />
                   </label>
-                  {uploadingTarget === "product" && <span className="muted">{tr("Uploading...")}</span>}
+                  {uploadingTarget === "product" && uploadingProductEditId === null && <span className="muted">{tr("Uploading...")}</span>}
                 </div>
                 <div className="product-photo-strip" aria-label={tr("Farmer photos")}>
                   {productForm.image_gallery.map((item, index) => (
@@ -1965,7 +2031,7 @@ export function MarketplaceApp() {
             </label>
             <button className="primary-button fit" type="submit" disabled={busy}>
               <Save size={17} />
-              {editingProductId ? tr("Save changes") : tr("Add product")}
+              {tr("Add product")}
             </button>
           </form>
         </section>
@@ -1976,13 +2042,18 @@ export function MarketplaceApp() {
         </div>
 
         <section className="product-list">
-          {products.map((product) => (
-            <article className="product-card" key={product.id}>
+          {products.map((product) => {
+            const isEditing = editingProductId === product.id;
+            const draft = productCardDrafts[product.id] ?? productCardDraftFrom(product);
+            const displayGallery = isEditing ? draft.image_gallery : product.image_gallery;
+
+            return (
+            <article className={isEditing ? "product-card editing" : "product-card"} key={product.id}>
               <div className="product-card-media">
                 <img loading="lazy" decoding="async" src={productImage(product.image_path, product.name)} alt={product.name} onError={fallbackImageOnError} />
-                {!!product.image_gallery?.length && (
+                {!!displayGallery?.length && (
                   <div className="product-card-thumbs">
-                    {product.image_gallery.map((image, index) => (
+                    {displayGallery.map((image, index) => (
                       <img loading="lazy" decoding="async"
                         key={image}
                         src={image}
@@ -1999,45 +2070,137 @@ export function MarketplaceApp() {
                     <h3>{productNameLabel(product.name)}</h3>
                     <span>{categoryLabel(product.category || "Produce")}</span>
                   </div>
-                  <strong>{formatMoney(product.price)}</strong>
+                  <strong>{formatMoney(isEditing ? Number(draft.price) : product.price)}</strong>
                 </div>
-                <p>{product.description}</p>
-                <div className="meta-row">
-                  <span>
-                    <Leaf size={15} />
-                    {product.growth_method}
-                  </span>
-                  <span>
-                    <Store size={15} />
-                    {product.quantity} {product.unit}
-                  </span>
-                </div>
-                <div className="card-actions">
-                  <button
-                    className="secondary-button fit"
-                    type="button"
-                    onClick={() => updateStock(product, Math.max(0, product.quantity - 5))}
-                  >
-                    -5
-                  </button>
-                  <button
-                    className="secondary-button fit"
-                    type="button"
-                    onClick={() => updateStock(product, product.quantity + 10)}
-                  >
-                    +10
-                  </button>
-                  <button className="ghost-button" type="button" onClick={() => editProduct(product)}>
-                    <Edit3 size={16} />
-                    {tr("Edit")}
-                  </button>
-                  <button className="danger-button" type="button" onClick={() => deleteProduct(product)}>
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                {isEditing ? (
+                  <form className="product-card-edit" onSubmit={(event) => void saveProductCardEdit(event, product)}>
+                    <div className="form-grid two">
+                      <label>
+                        {tr("Your price")}
+                        <input
+                          min="1"
+                          type="number"
+                          value={draft.price}
+                          onChange={(event) => updateProductCardDraft(product, { price: event.target.value })}
+                          required
+                        />
+                      </label>
+                      <label>
+                        {tr("Stock")}
+                        <input
+                          min="0"
+                          type="number"
+                          value={draft.quantity}
+                          onChange={(event) => updateProductCardDraft(product, { quantity: event.target.value })}
+                          required
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      {tr("Description")}
+                      <textarea
+                        value={draft.description}
+                        onChange={(event) => updateProductCardDraft(product, { description: event.target.value })}
+                        required
+                      />
+                    </label>
+                    <div className="card-edit-upload">
+                      <div>
+                        <strong>{tr("Product photo")}</strong>
+                        <p className="muted">{tr("Catalog image stays first. Farmer photos are added beside it.")}</p>
+                      </div>
+                      <div className="upload-actions">
+                        <label className="upload-button">
+                          <Upload size={17} />
+                          {tr("Gallery")}
+                          <input
+                            accept="image/*"
+                            className="file-input"
+                            type="file"
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0];
+                              event.currentTarget.value = "";
+                              void handleProductCardImageUpload(product, file);
+                            }}
+                          />
+                        </label>
+                        <label className="upload-button">
+                          <Camera size={17} />
+                          {tr("Camera")}
+                          <input
+                            accept="image/*"
+                            capture="environment"
+                            className="file-input"
+                            type="file"
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0];
+                              event.currentTarget.value = "";
+                              void handleProductCardImageUpload(product, file);
+                            }}
+                          />
+                        </label>
+                        {uploadingProductEditId === product.id && <span className="muted">{tr("Uploading...")}</span>}
+                      </div>
+                      {!!draft.image_gallery.length && (
+                        <div className="product-photo-strip" aria-label={tr("Farmer photos")}>
+                          {draft.image_gallery.map((image, index) => (
+                            <figure className="product-photo-thumb" key={image}>
+                              <img loading="lazy" decoding="async" src={image} alt={`${product.name} ${index + 1}`} onError={fallbackImageOnError} />
+                              <button
+                                aria-label={tr("Remove photo")}
+                                className="thumb-remove"
+                                type="button"
+                                onClick={() => removeProductCardPhoto(product, image)}
+                              >
+                                <X size={14} />
+                              </button>
+                            </figure>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="card-actions">
+                      <button className="primary-button fit" type="submit" disabled={savingProductId === product.id}>
+                        <Save size={17} />
+                        {tr("Save changes")}
+                      </button>
+                      <button className="ghost-button" type="button" onClick={() => cancelProductCardEdit(product.id)}>
+                        <X size={16} />
+                        {tr("Cancel")}
+                      </button>
+                      <button className="danger-button" type="button" onClick={() => deleteProduct(product)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <p>{product.description}</p>
+                    <div className="meta-row">
+                      <span>
+                        <Leaf size={15} />
+                        {product.growth_method}
+                      </span>
+                      <span>
+                        <Store size={15} />
+                        {product.quantity} {product.unit}
+                      </span>
+                    </div>
+                    <div className="card-actions">
+                      <button className="ghost-button" type="button" onClick={() => editProduct(product)}>
+                        <Edit3 size={16} />
+                        {tr("Edit")}
+                      </button>
+                      <button className="danger-button" type="button" onClick={() => deleteProduct(product)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </article>
-          ))}
+            );
+          })}
           {!products.length && <EmptyState>{tr("Add your first product to open your farm store.")}</EmptyState>}
         </section>
       </div>
