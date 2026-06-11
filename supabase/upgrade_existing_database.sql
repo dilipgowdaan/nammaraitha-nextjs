@@ -104,10 +104,10 @@ begin
     raise exception 'Quantity must be positive.';
   end if;
 
-  update public.inventory_reservations
+  update public.inventory_reservations as reservation
   set status = 'expired'
-  where status = 'active'
-    and expires_at <= now();
+  where reservation.status = 'active'
+    and reservation.expires_at <= now();
 
   select quantity
     into v_stock
@@ -120,12 +120,12 @@ begin
     raise exception 'Product not found.';
   end if;
 
-  select coalesce(sum(quantity), 0)::integer
+  select coalesce(sum(reservation.quantity), 0)::integer
     into v_reserved
-  from public.inventory_reservations
-  where product_id = p_product_id
-    and status = 'active'
-    and expires_at > now();
+  from public.inventory_reservations as reservation
+  where reservation.product_id = p_product_id
+    and reservation.status = 'active'
+    and reservation.expires_at > now();
 
   if (v_stock - v_reserved) < p_quantity then
     raise exception 'Insufficient stock available.';
@@ -159,11 +159,11 @@ security definer
 set search_path = public
 as $$
 begin
-  update public.inventory_reservations
+  update public.inventory_reservations as reservation
   set status = 'released'
-  where id = p_reservation_id
-    and buyer_id = p_buyer_id
-    and status = 'active';
+  where reservation.id = p_reservation_id
+    and reservation.buyer_id = p_buyer_id
+    and reservation.status = 'active';
 end;
 $$;
 
@@ -198,10 +198,10 @@ begin
     raise exception 'Quantity must be positive.';
   end if;
 
-  update public.inventory_reservations
+  update public.inventory_reservations as reservation
   set status = 'expired'
-  where status = 'active'
-    and expires_at <= now();
+  where reservation.status = 'active'
+    and reservation.expires_at <= now();
 
   select quantity, discount_price, unit
     into v_stock, v_price, v_unit
@@ -215,15 +215,15 @@ begin
   end if;
 
   if p_reservation_id is not null then
-    select quantity
+    select reservation.quantity
       into v_reserved_quantity
-    from public.inventory_reservations
-    where id = p_reservation_id
-      and buyer_id = p_buyer_id
-      and farmer_id = p_farmer_id
-      and product_id = p_product_id
-      and status = 'active'
-      and expires_at > now()
+    from public.inventory_reservations as reservation
+    where reservation.id = p_reservation_id
+      and reservation.buyer_id = p_buyer_id
+      and reservation.farmer_id = p_farmer_id
+      and reservation.product_id = p_product_id
+      and reservation.status = 'active'
+      and reservation.expires_at > now()
     for update;
 
     if not found then
@@ -234,12 +234,12 @@ begin
       raise exception 'Reserved quantity is lower than requested quantity.';
     end if;
   else
-    select coalesce(sum(quantity), 0)::integer
+    select coalesce(sum(reservation.quantity), 0)::integer
       into v_reserved
-    from public.inventory_reservations
-    where product_id = p_product_id
-      and status = 'active'
-      and expires_at > now();
+    from public.inventory_reservations as reservation
+    where reservation.product_id = p_product_id
+      and reservation.status = 'active'
+      and reservation.expires_at > now();
 
     if (v_stock - v_reserved) < p_quantity then
       raise exception 'Insufficient stock available.';
@@ -255,9 +255,9 @@ begin
   where id = p_product_id;
 
   if p_reservation_id is not null then
-    update public.inventory_reservations
+    update public.inventory_reservations as reservation
     set status = 'converted'
-    where id = p_reservation_id;
+    where reservation.id = p_reservation_id;
   end if;
 
   insert into public.orders (

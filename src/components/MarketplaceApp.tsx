@@ -3119,7 +3119,16 @@ export function MarketplaceApp() {
             <span>NAMMA RAITHA</span>
           </button>
 
-          <nav className="header-menu" aria-label="Main menu">
+          <nav
+            className="header-menu"
+            aria-label="Main menu"
+            onWheel={(event) => {
+              const menu = event.currentTarget;
+              if (menu.scrollWidth <= menu.clientWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+              event.preventDefault();
+              menu.scrollLeft += event.deltaY;
+            }}
+          >
             {activeNav.map((item) => {
               const isActive =
                 currentUser.role === "admin"

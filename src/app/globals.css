@@ -1559,7 +1559,15 @@ body {
   justify-content: center;
   min-width: 0;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   padding: 0.15rem;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  -ms-overflow-style: none;
+}
+
+.header-menu::-webkit-scrollbar {
+  display: none;
 }
 
 .header-menu button {
@@ -1712,8 +1720,34 @@ button.primary-button:hover {
 .stat-icon,
 .mini-icon,
 .modal-icon {
+  align-items: center;
   background: #e8f5e9;
   color: #2e7d32;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  line-height: 1;
+  place-items: center;
+}
+
+.icon-button,
+.avatar-button,
+.floating-icon-button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.stat-icon svg,
+.mini-icon svg,
+.modal-icon svg,
+.icon-button svg,
+.floating-icon-button svg,
+.header-menu button svg,
+.header-small-button svg,
+.logo-button svg {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .catalog-card.selected,
