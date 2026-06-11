@@ -326,7 +326,8 @@ function OrderTracker({
   events = [],
   cancelReason,
   cancelledAt,
-  labelForStatus
+  labelForStatus,
+  showTimeline = true
 }: {
   status?: string | null;
   labels: string[];
@@ -334,6 +335,7 @@ function OrderTracker({
   cancelReason?: string | null;
   cancelledAt?: string | null;
   labelForStatus: (status: string) => string;
+  showTimeline?: boolean;
 }) {
   const isCancelled = status === "cancelled";
   const lastFulfillmentEvent = [...events].reverse().find((event) => trackingSteps.includes(event.status as TrackingStatus));
@@ -350,7 +352,7 @@ function OrderTracker({
         ))}
       </div>
 
-      {isCancelled && (
+      {showTimeline && isCancelled && (
         <div className="cancel-note">
           <strong>{labelForStatus("cancelled")}</strong>
           <span>{cancelledAt ? formatDate(cancelledAt) : formatDate(events.find((event) => event.status === "cancelled")?.created_at)}</span>
@@ -358,7 +360,7 @@ function OrderTracker({
         </div>
       )}
 
-      {!!events.length && (
+      {showTimeline && !!events.length && (
         <div className="tracking-timeline">
           {events.map((event) => (
             <div className="tracking-event" key={event.id || `${event.status}-${event.created_at}`}>
@@ -407,6 +409,7 @@ export function MarketplaceApp() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [alert, setAlert] = useState<AlertState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gpsBusy, setGpsBusy] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -446,6 +449,7 @@ export function MarketplaceApp() {
   const [buyerOrders, setBuyerOrders] = useState<MarketplaceOrder[]>([]);
   const [myReviews, setMyReviews] = useState<Review[]>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<FarmerProfileBundle | null>(null);
+  const [selectedOrderDetailId, setSelectedOrderDetailId] = useState<number | null>(null);
   const [orderQuantities, setOrderQuantities] = useState<Record<number, string>>({});
   const [activeProductImages, setActiveProductImages] = useState<Record<number, string>>({});
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft | null>(null);
@@ -646,8 +650,34 @@ export function MarketplaceApp() {
 
       try {
         if (currentUser.role === "farmer") {
-          const orderRows = await requestJson<MarketplaceOrder[]>("/api/farmer_orders");
-          if (!stopped) setFarmerOrders(orderRows);
+          const [orderRows, user] = await Promise.all([
+            requestJson<MarketplaceOrder[]>("/api/farmer_orders"),
+            requestJson<UserProfile | null>("/api/current_user")
+          ]);
+          if (!stopped) {
+            setFarmerOrders(orderRows);
+            if (user) {
+              setCurrentUser((existing) => {
+                if (!existing) return user;
+                if (
+                  existing.verification_status === user.verification_status &&
+                  existing.verification_note === user.verification_note &&
+                  existing.kyc_document_url === user.kyc_document_url &&
+                  existing.verified_at === user.verified_at
+                ) {
+                  return existing;
+                }
+
+                return {
+                  ...existing,
+                  verification_status: user.verification_status,
+                  verification_note: user.verification_note,
+                  kyc_document_url: user.kyc_document_url,
+                  verified_at: user.verified_at
+                };
+              });
+            }
+          }
         } else if (currentUser.role === "buyer") {
           const orderRows = await requestJson<MarketplaceOrder[]>("/api/buyer_orders");
           if (!stopped) setBuyerOrders(orderRows);
@@ -713,6 +743,15 @@ export function MarketplaceApp() {
     Math.min(marketPage, marketPageCount) * marketPageSize
   );
   const cartTotal = cartItems.reduce((sum, item) => sum + item.quantity * item.product.price, 0);
+  const selectedOrderDetail = useMemo(() => {
+    if (!selectedOrderDetailId) return null;
+    return (
+      farmerOrders.find((order) => order.id === selectedOrderDetailId) ??
+      buyerOrders.find((order) => order.id === selectedOrderDetailId) ??
+      adminDashboard?.orders.find((order) => order.id === selectedOrderDetailId) ??
+      null
+    );
+  }, [adminDashboard?.orders, buyerOrders, farmerOrders, selectedOrderDetailId]);
 
   function nextTrackingStatus(order: MarketplaceOrder): TrackingStatus | null {
     if (order.status === "cancelled" || order.status === "delivered") {
@@ -774,39 +813,76 @@ export function MarketplaceApp() {
     setFarmerOrders([]);
     setBuyerOrders([]);
     setSelectedFarmer(null);
+    setSelectedOrderDetailId(null);
     showAlert(tr("Logged out."));
   }
 
-  function requestCurrentDeviceLocation() {
+  async function requestCurrentDeviceLocation() {
     if (!navigator.geolocation) {
       showAlert(tr("Location is not available in this browser."), "error");
       return;
     }
 
+    const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+    if (!window.isSecureContext && !isLocalHost) {
+      showAlert(tr("GPS needs HTTPS. Open the deployed Vercel site or localhost."), "error");
+      return;
+    }
+
     showAlert(tr("Reading your GPS location..."));
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const location = {
-          lat: Number(position.coords.latitude.toFixed(5)),
-          lng: Number(position.coords.longitude.toFixed(5))
-        };
-        setRegisterForm((form) => ({ ...form, ...location }));
-        setProfileForm((form) => ({ ...form, ...location }));
-        showAlert(`${tr("GPS")}: ${location.lat}, ${location.lng}`);
-      },
-      (error) => {
-        const message =
-          error.code === error.PERMISSION_DENIED
-            ? tr("GPS permission was denied. Allow location access in the browser.")
-            : tr("Could not read GPS. Try again on HTTPS or allow precise location.");
-        showAlert(message, "error");
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 12000
+    setGpsBusy(true);
+
+    const readPosition = (options: PositionOptions) =>
+      new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
+
+    try {
+      let position: GeolocationPosition;
+
+      try {
+        position = await readPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 18000 });
+      } catch {
+        position = await readPosition({ enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 });
       }
-    );
+
+      const location = {
+        lat: Number(position.coords.latitude.toFixed(5)),
+        lng: Number(position.coords.longitude.toFixed(5))
+      };
+      const accuracy = Number.isFinite(position.coords.accuracy) ? Math.round(position.coords.accuracy) : null;
+
+      setRegisterForm((form) => ({ ...form, ...location }));
+      setProfileForm((form) => ({ ...form, ...location }));
+      setCurrentUser((user) => (user && user.role !== "admin" ? { ...user, ...location } : user));
+
+      if (currentUser && currentUser.role !== "admin") {
+        await requestJson("/api/update_profile", {
+          method: "POST",
+          body: JSON.stringify(location)
+        });
+        await refreshCurrentUser();
+
+        if (currentUser.role === "buyer") {
+          await Promise.all([loadBuyerDashboard(), searchProducts(searchQuery)]).catch(() => null);
+        }
+      }
+
+      showAlert(
+        `${tr("GPS location updated.")}${accuracy ? ` ${tr("Accuracy")}: ${accuracy}m` : ""} - ${location.lat}, ${location.lng}`
+      );
+    } catch (error) {
+      const geolocationError = error as GeolocationPositionError;
+      const message =
+        geolocationError.code === geolocationError.PERMISSION_DENIED
+          ? tr("GPS permission was denied. Allow location access in the browser.")
+          : geolocationError.code === geolocationError.POSITION_UNAVAILABLE
+            ? tr("GPS signal is unavailable. Turn on device location and try again.")
+            : tr("Could not read GPS. Try again on HTTPS or allow precise location.");
+      showAlert(message, "error");
+    } finally {
+      setGpsBusy(false);
+    }
   }
 
   async function uploadImageFile(file: File, target: "product" | "profile" | "gallery" | "kyc") {
@@ -1316,6 +1392,74 @@ export function MarketplaceApp() {
     window.open("/api/admin/backup", "_blank", "noopener,noreferrer");
   }
 
+  function renderOrderDetailModal() {
+    if (!selectedOrderDetail) return null;
+
+    const order = selectedOrderDetail;
+    const partyLine =
+      currentUser?.role === "farmer"
+        ? `${tr("for")} ${order.buyer_username ?? tr("buyer")}`
+        : currentUser?.role === "admin"
+          ? `${order.buyer_username ?? tr("buyer")} ${tr("from")} ${order.farmer_username ?? tr("Farmer")}`
+          : `${tr("from")} ${order.farmer_username ?? tr("Farmer")}`;
+
+    return (
+      <div className="modal-backdrop" role="dialog" aria-modal="true">
+        <section className="modal-card order-detail-card">
+          <button className="modal-close" type="button" onClick={() => setSelectedOrderDetailId(null)}>
+            <X size={20} />
+          </button>
+          <div className="modal-icon">
+            <ClipboardList size={28} />
+          </div>
+          <div>
+            <p className="eyebrow">{tr("Order details")}</p>
+            <h2>{tr("Order")} #{order.id}: {productNameLabel(order.product_name)}</h2>
+            <p className="muted">
+              {order.quantity} {order.product_unit} {partyLine}
+            </p>
+          </div>
+
+          <div className="order-detail-summary">
+            <span>
+              <strong>{tr("Status")}</strong>
+              <StatusPill status={order.status} label={statusLabel(order.status)} />
+            </span>
+            <span>
+              <strong>{tr("Total")}</strong>
+              {formatMoney(order.quantity * order.product_price)}
+            </span>
+            <span>
+              <strong>{tr("Ordered")}</strong>
+              {formatDate(order.timestamp)}
+            </span>
+            {order.delivery_slot && (
+              <span>
+                <strong>{tr("Delivery slot")}</strong>
+                {tr(order.delivery_slot)}
+              </span>
+            )}
+            {order.payment_reference && (
+              <span>
+                <strong>{tr("Payment")}</strong>
+                {order.payment_reference}
+              </span>
+            )}
+          </div>
+
+          <OrderTracker
+            status={order.status === "cancelled" ? "cancelled" : order.tracking_status}
+            labels={[tr("Ordered"), tr("Packed"), tr("Out for delivery"), tr("Delivered")]}
+            events={order.tracking_events}
+            cancelReason={order.cancel_reason}
+            cancelledAt={order.cancelled_at}
+            labelForStatus={trackingStatusLabel}
+          />
+        </section>
+      </div>
+    );
+  }
+
   function renderAuth() {
     return (
       <main className="auth-shell">
@@ -1482,8 +1626,8 @@ export function MarketplaceApp() {
                       {location.label}
                     </button>
                   ))}
-                  <button type="button" onClick={requestCurrentDeviceLocation}>
-                    {tr("Use GPS")}
+                  <button type="button" disabled={gpsBusy} onClick={() => void requestCurrentDeviceLocation()}>
+                    {gpsBusy ? tr("Reading GPS...") : tr("Use GPS")}
                   </button>
                 </div>
               </div>
@@ -1912,7 +2056,19 @@ export function MarketplaceApp() {
             const nextStatus = nextTrackingStatus(order);
 
             return (
-            <article className={order.status === "cancelled" ? "order-card cancelled-order" : "order-card"} key={order.id}>
+            <article
+              className={order.status === "cancelled" ? "order-card clickable-order cancelled-order" : "order-card clickable-order"}
+              key={order.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedOrderDetailId(order.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedOrderDetailId(order.id);
+                }
+              }}
+            >
               <div>
                 <h3>{tr("Order")} #{order.id}: {productNameLabel(order.product_name)}</h3>
                 <p>
@@ -1930,13 +2086,21 @@ export function MarketplaceApp() {
                   cancelReason={order.cancel_reason}
                   cancelledAt={order.cancelled_at}
                   labelForStatus={trackingStatusLabel}
+                  showTimeline={false}
                 />
               </div>
               <div className="order-side">
                 <StatusPill status={order.status} label={statusLabel(order.status)} />
                 <strong>{formatMoney(order.quantity * order.product_price)}</strong>
                 {nextStatus && (
-                  <button className={nextStatus === "delivered" ? "primary-button fit" : "secondary-button fit"} type="button" onClick={() => void updateTracking(order.id, nextStatus)}>
+                  <button
+                    className={nextStatus === "delivered" ? "primary-button fit" : "secondary-button fit"}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void updateTracking(order.id, nextStatus);
+                    }}
+                  >
                     {trackingActionIcon(nextStatus)}
                     {trackingStatusLabel(nextStatus)}
                   </button>
@@ -1945,14 +2109,15 @@ export function MarketplaceApp() {
                   <button
                     className="danger-button fit"
                     type="button"
-                    onClick={() =>
+                    onClick={(event) => {
+                      event.stopPropagation();
                       setCancelDraft({
                         order_id: order.id,
                         product_name: order.product_name,
                         buyer_username: order.buyer_username ?? tr("buyer"),
                         reason: ""
                       })
-                    }
+                    }}
                   >
                     <AlertTriangle size={16} />
                     {tr("Cancel request")}
@@ -2170,9 +2335,9 @@ export function MarketplaceApp() {
             <div className="section-title">
               <MapPin size={18} />
               <span>{tr("Location")}</span>
-              <button className="ghost-button fit" type="button" onClick={requestCurrentDeviceLocation}>
+              <button className="ghost-button fit" type="button" disabled={gpsBusy} onClick={() => void requestCurrentDeviceLocation()}>
                 <Navigation size={16} />
-                {tr("Use GPS")}
+                {gpsBusy ? tr("Reading GPS...") : tr("Use GPS")}
               </button>
             </div>
             <FarmersMap
@@ -2188,7 +2353,7 @@ export function MarketplaceApp() {
           </button>
         </form>
 
-        {currentUser?.role === "farmer" && (
+        {currentUser?.role === "farmer" && currentUser.verification_status !== "approved" && (
           <form className="panel product-form" onSubmit={submitKyc}>
             <div className="panel-title">
               <h3>{tr("KYC verification")}</h3>
@@ -2840,7 +3005,19 @@ export function MarketplaceApp() {
         </div>
         <div className="order-list">
           {buyerOrders.map((order) => (
-            <article className={order.status === "cancelled" ? "order-card cancelled-order" : "order-card"} key={order.id}>
+            <article
+              className={order.status === "cancelled" ? "order-card clickable-order cancelled-order" : "order-card clickable-order"}
+              key={order.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedOrderDetailId(order.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedOrderDetailId(order.id);
+                }
+              }}
+            >
               <div>
                 <h3>{productNameLabel(order.product_name)}</h3>
                 <p>
@@ -2856,6 +3033,7 @@ export function MarketplaceApp() {
                   cancelReason={order.cancel_reason}
                   cancelledAt={order.cancelled_at}
                   labelForStatus={trackingStatusLabel}
+                  showTimeline={false}
                 />
               </div>
               <div className="order-side">
@@ -2864,7 +3042,8 @@ export function MarketplaceApp() {
                 <button
                   className="ghost-button fit"
                   type="button"
-                  onClick={() =>
+                  onClick={(event) => {
+                    event.stopPropagation();
                     setReportDraft({
                       target_type: "order",
                       target_id: order.id,
@@ -2872,7 +3051,7 @@ export function MarketplaceApp() {
                       reason: "Quality concern",
                       details: ""
                     })
-                  }
+                  }}
                 >
                   <Flag size={15} />
                   {tr("Report")}
@@ -2881,7 +3060,8 @@ export function MarketplaceApp() {
                   <button
                     className="secondary-button fit"
                     type="button"
-                    onClick={() =>
+                    onClick={(event) => {
+                      event.stopPropagation();
                       setReviewDraft({
                         review_id: order.review_id ?? undefined,
                         farmer_id: order.farmer_id,
@@ -2890,7 +3070,7 @@ export function MarketplaceApp() {
                         rating: order.review_rating ?? 5,
                         comment: order.review_comment ?? ""
                       })
-                    }
+                    }}
                   >
                     <Star size={17} />
                     {order.review_id ? tr("Edit review") : tr("Review")}
@@ -3001,7 +3181,19 @@ export function MarketplaceApp() {
           </div>
           <div className="table-like admin-orders">
             {adminDashboard.orders.map((order) => (
-              <div className={order.status === "cancelled" ? "table-row admin-order-row cancelled-order" : "table-row admin-order-row"} key={order.id}>
+              <div
+                className={order.status === "cancelled" ? "table-row admin-order-row clickable-order cancelled-order" : "table-row admin-order-row clickable-order"}
+                key={order.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedOrderDetailId(order.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedOrderDetailId(order.id);
+                  }
+                }}
+              >
                 <div className="admin-order-main">
                   <span>#{order.id}</span>
                   <strong>{productNameLabel(order.product_name)}</strong>
@@ -3010,23 +3202,6 @@ export function MarketplaceApp() {
                   <StatusPill status={order.status} label={statusLabel(order.status)} />
                   <span>{formatMoney(order.quantity * order.product_price)}</span>
                 </div>
-                {(order.cancel_reason || order.tracking_events?.length) && (
-                  <div className="admin-order-detail">
-                    {order.cancel_reason && (
-                      <p>
-                        <strong>{tr("Cancellation reason")}:</strong> {order.cancel_reason}
-                      </p>
-                    )}
-                    <OrderTracker
-                      status={order.status === "cancelled" ? "cancelled" : order.tracking_status}
-                      labels={[tr("Ordered"), tr("Packed"), tr("Out for delivery"), tr("Delivered")]}
-                      events={order.tracking_events}
-                      cancelReason={order.cancel_reason}
-                      cancelledAt={order.cancelled_at}
-                      labelForStatus={trackingStatusLabel}
-                    />
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -3391,6 +3566,8 @@ export function MarketplaceApp() {
         </div>
         {renderDashboardContent()}
       </main>
+
+      {renderOrderDetailModal()}
 
       {paymentDraft && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
