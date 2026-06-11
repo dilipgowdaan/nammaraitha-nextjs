@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { apiError, apiOk, normalizeProduct, normalizeUser, numberFrom, requireUser } from "@/lib/api";
+import { loadTrackingEventsByOrder } from "@/lib/orderTracking";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,10 @@ export async function GET(request: NextRequest) {
   const products = (productsRes.data ?? []).map(normalizeProduct);
   const productMap = new Map(products.map((product) => [product.id, product]));
   const orders = ordersRes.data ?? [];
+  const trackingMap = await loadTrackingEventsByOrder(
+    auth.supabase,
+    orders.map((order) => numberFrom(order.id))
+  ).catch(() => new Map());
   const reviews = reviewsRes.data ?? [];
   const reports = reportsRes.data ?? [];
   const auditLogs = auditRes.data ?? [];
@@ -109,6 +114,10 @@ export async function GET(request: NextRequest) {
       delivery_slot: order.delivery_slot ?? null,
       tracking_status: order.tracking_status ?? "order_placed",
       tracking_note: order.tracking_note ?? null,
+      cancel_reason: order.cancel_reason ?? null,
+      cancelled_at: order.cancelled_at ?? null,
+      cancelled_by: order.cancelled_by ? numberFrom(order.cancelled_by) : null,
+      tracking_events: trackingMap.get(numberFrom(order.id)) ?? [],
       product_name: productMap.get(numberFrom(order.product_id))?.name ?? "Unknown product",
       buyer_username: userMap.get(numberFrom(order.buyer_id))?.username ?? "unknown",
       farmer_username: userMap.get(numberFrom(order.farmer_id))?.username ?? "unknown"

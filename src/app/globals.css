@@ -823,6 +823,11 @@ label {
   padding: 1rem;
 }
 
+.cancelled-order {
+  border-left-color: #d32f2f !important;
+  background: #fffafa;
+}
+
 .order-card h3,
 .order-card p {
   margin: 0 0 0.35rem;
@@ -1266,6 +1271,9 @@ label {
 }
 
 .payment-card {
+  background:
+    radial-gradient(circle at top left, rgba(76, 175, 80, 0.14), transparent 34%),
+    #fff;
   justify-items: center;
   text-align: center;
 }
@@ -1284,6 +1292,60 @@ label {
 
 .payment-card strong {
   font-size: 1.65rem;
+}
+
+.payment-state {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  min-height: 260px;
+  padding: 1.2rem 0.4rem;
+}
+
+.payment-spinner {
+  height: 92px;
+  position: relative;
+  width: 92px;
+}
+
+.payment-spinner span {
+  animation: payment-spin 1.1s linear infinite;
+  border: 4px solid transparent;
+  border-radius: 50%;
+  border-top-color: #2e7d32;
+  inset: 0;
+  position: absolute;
+}
+
+.payment-spinner span:nth-child(2) {
+  animation-duration: 1.5s;
+  border-top-color: #ffc107;
+  inset: 12px;
+}
+
+.payment-spinner span:nth-child(3) {
+  animation-duration: 0.8s;
+  border-top-color: #2196f3;
+  inset: 24px;
+}
+
+.payment-success-icon {
+  align-items: center;
+  background: #e8f5e9;
+  border: 1px solid #bfe4c0;
+  border-radius: 999px;
+  color: #2e7d32;
+  display: inline-flex;
+  height: 86px;
+  justify-content: center;
+  width: 86px;
+}
+
+@keyframes payment-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .modal-close {
@@ -1311,6 +1373,16 @@ label {
   height: 52px;
   justify-content: center;
   width: 52px;
+}
+
+.danger-icon {
+  background: #fff0f0;
+  color: #d32f2f;
+}
+
+.cancel-card textarea {
+  min-height: 110px;
+  resize: vertical;
 }
 
 .rating-picker {
@@ -1717,6 +1789,8 @@ button.primary-button:hover {
   color: #2e7d32;
 }
 
+.stat-card .stat-icon,
+.mini-row .mini-icon,
 .stat-icon,
 .mini-icon,
 .modal-icon {
@@ -1741,6 +1815,8 @@ button.primary-button:hover {
   line-height: 1;
 }
 
+.stat-card .stat-icon svg,
+.mini-row .mini-icon svg,
 .stat-icon svg,
 .mini-icon svg,
 .modal-icon svg,
@@ -1752,8 +1828,14 @@ button.primary-button:hover {
   display: block;
   flex: 0 0 auto;
   margin: auto;
-  position: relative;
-  top: 1px;
+}
+
+.stat-card .stat-icon svg,
+.mini-row .mini-icon svg,
+.modal-icon svg,
+.icon-button svg,
+.floating-icon-button svg {
+  transform: translateY(3px);
 }
 
 .catalog-card.selected,
@@ -2203,12 +2285,17 @@ button.primary-button:hover {
   justify-content: flex-end;
 }
 
+.tracking-block {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.65rem;
+  max-width: 560px;
+}
+
 .order-tracker {
   display: grid;
   gap: 0.35rem;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 0.55rem;
-  max-width: 520px;
 }
 
 .tracker-step {
@@ -2225,6 +2312,85 @@ button.primary-button:hover {
 .tracker-step.active {
   background: #2e7d32;
   color: #fff;
+}
+
+.order-tracker.cancelled .tracker-step.active {
+  background: #74806f;
+}
+
+.cancel-note {
+  background: #fff0f0;
+  border: 1px solid #efb8b8;
+  border-radius: 8px;
+  color: #8b2525;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+}
+
+.cancel-note p,
+.cancel-note span {
+  margin: 0;
+}
+
+.tracking-timeline {
+  border-left: 2px solid #dfe8dc;
+  display: grid;
+  gap: 0.75rem;
+  margin-left: 0.45rem;
+  padding-left: 0.9rem;
+}
+
+.tracking-event {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: auto 1fr;
+  position: relative;
+}
+
+.tracking-event > span {
+  background: #2e7d32;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px #bfe4c0;
+  height: 13px;
+  margin-left: -1.35rem;
+  margin-top: 0.25rem;
+  width: 13px;
+}
+
+.tracking-event strong,
+.tracking-event small,
+.tracking-event p {
+  display: block;
+  margin: 0;
+}
+
+.tracking-event small,
+.tracking-event p {
+  color: var(--muted);
+}
+
+.admin-order-row {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.admin-order-main {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 70px 1.2fr 1fr 0.8fr 0.8fr 0.8fr;
+}
+
+.admin-order-detail {
+  border-top: 1px dashed #dfe8dc;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.admin-order-detail > p {
+  margin: 0 0 0.5rem;
 }
 
 .status-approved,

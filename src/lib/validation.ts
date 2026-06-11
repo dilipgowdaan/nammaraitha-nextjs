@@ -55,7 +55,8 @@ export const productUpdateSchema = productSchema.partial().extend({
 });
 
 export const updateOrderSchema = z.object({
-  status: z.enum(["pending", "paid", "delivered", "cancelled"])
+  status: z.enum(["pending", "paid", "delivered", "cancelled"]),
+  cancel_reason: z.string().trim().max(300).optional().default("")
 });
 
 export const placeOrderSchema = z.object({
@@ -101,8 +102,12 @@ export const adminModerationSchema = z.object({
 });
 
 export const trackingSchema = z.object({
-  tracking_status: z.enum(["order_placed", "packed", "out_for_delivery", "delivered"]),
+  tracking_status: z.enum(["packed", "out_for_delivery", "delivered"]),
   tracking_note: z.string().trim().max(240).optional().default("")
+});
+
+export const cancelOrderSchema = z.object({
+  cancel_reason: requiredText.min(6, "Please mention a clear cancellation reason.").max(300)
 });
 
 export function schemaMessage(error: z.ZodError) {

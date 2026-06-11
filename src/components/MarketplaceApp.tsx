@@ -6,6 +6,7 @@ import {
   BarChart3,
   Camera,
   Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -158,6 +159,15 @@ type ReportDraft = {
   details: string;
 };
 
+type CancelDraft = {
+  order_id: number;
+  product_name: string;
+  buyer_username: string;
+  reason: string;
+};
+
+type PaymentStage = "idle" | "processing" | "success";
+
 const karnatakaLocations = [
   { label: "Bengaluru", lat: 12.9716, lng: 77.5946 },
   { label: "Mysuru", lat: 12.2958, lng: 76.6394 },
@@ -172,6 +182,8 @@ const deliverySlots = [
   "Next day 7 AM - 10 AM",
   "Weekend morning"
 ];
+
+const trackingSteps: TrackingStatus[] = ["order_placed", "packed", "out_for_delivery", "delivered"];
 
 const emptyMarketFilters: MarketFilters = {
   category: "All",
@@ -233,6 +245,10 @@ async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T
   }
 
   return payload as T;
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
 function formatMoney(value: number) {
@@ -304,17 +320,58 @@ function VerificationBadge({ status, label }: { status?: string; label: string }
   );
 }
 
-function OrderTracker({ status, labels }: { status?: string | null; labels: string[] }) {
-  const steps: TrackingStatus[] = ["order_placed", "packed", "out_for_delivery", "delivered"];
-  const current = Math.max(0, steps.indexOf((status as TrackingStatus) || "order_placed"));
+function OrderTracker({
+  status,
+  labels,
+  events = [],
+  cancelReason,
+  cancelledAt,
+  labelForStatus
+}: {
+  status?: string | null;
+  labels: string[];
+  events?: MarketplaceOrder["tracking_events"];
+  cancelReason?: string | null;
+  cancelledAt?: string | null;
+  labelForStatus: (status: string) => string;
+}) {
+  const isCancelled = status === "cancelled";
+  const lastFulfillmentEvent = [...events].reverse().find((event) => trackingSteps.includes(event.status as TrackingStatus));
+  const effectiveStatus = isCancelled ? lastFulfillmentEvent?.status ?? "order_placed" : status ?? "order_placed";
+  const current = Math.max(0, trackingSteps.indexOf(effectiveStatus as TrackingStatus));
 
   return (
-    <div className="order-tracker">
-      {steps.map((step, index) => (
-        <span key={step} className={index <= current ? "tracker-step active" : "tracker-step"}>
-          {labels[index]}
-        </span>
-      ))}
+    <div className="tracking-block">
+      <div className={isCancelled ? "order-tracker cancelled" : "order-tracker"}>
+        {trackingSteps.map((step, index) => (
+          <span key={step} className={index <= current ? "tracker-step active" : "tracker-step"}>
+            {labels[index]}
+          </span>
+        ))}
+      </div>
+
+      {isCancelled && (
+        <div className="cancel-note">
+          <strong>{labelForStatus("cancelled")}</strong>
+          <span>{cancelledAt ? formatDate(cancelledAt) : formatDate(events.find((event) => event.status === "cancelled")?.created_at)}</span>
+          {cancelReason && <p>{cancelReason}</p>}
+        </div>
+      )}
+
+      {!!events.length && (
+        <div className="tracking-timeline">
+          {events.map((event) => (
+            <div className="tracking-event" key={event.id || `${event.status}-${event.created_at}`}>
+              <span />
+              <div>
+                <strong>{labelForStatus(event.status)}</strong>
+                <small>{formatDate(event.created_at)}</small>
+                {event.note && <p>{event.note}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -392,8 +449,10 @@ export function MarketplaceApp() {
   const [orderQuantities, setOrderQuantities] = useState<Record<number, string>>({});
   const [activeProductImages, setActiveProductImages] = useState<Record<number, string>>({});
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft | null>(null);
+  const [paymentStage, setPaymentStage] = useState<PaymentStage>("idle");
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
   const [reportDraft, setReportDraft] = useState<ReportDraft | null>(null);
+  const [cancelDraft, setCancelDraft] = useState<CancelDraft | null>(null);
   const [kycDraft, setKycDraft] = useState({ document_url: "", note: "" });
   const [adminDashboard, setAdminDashboard] = useState<AdminDashboard | null>(null);
 
@@ -412,6 +471,17 @@ export function MarketplaceApp() {
   );
   const statusLabel = useCallback((status: string) => tr(status), [tr]);
   const productNameLabel = useCallback((name: string) => tr(name), [tr]);
+  const trackingStatusLabel = useCallback(
+    (status: string) => {
+      if (status === "order_placed") return tr("Ordered");
+      if (status === "packed") return tr("Packed");
+      if (status === "out_for_delivery") return tr("Out for delivery");
+      if (status === "delivered") return tr("Delivered");
+      if (status === "cancelled") return tr("Cancelled");
+      return tr(status);
+    },
+    [tr]
+  );
   const adminLogMessage = useCallback(
     (log: AdminDashboard["logs"][number]) => {
       if (log.type === "order") {
@@ -567,6 +637,41 @@ export function MarketplaceApp() {
     }
   }, [currentUser, loadAdminDashboard, loadBuyerDashboard, loadFarmerDashboard, searchProducts]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let stopped = false;
+    const refreshLiveOrders = async () => {
+      if (document.hidden || stopped) return;
+
+      try {
+        if (currentUser.role === "farmer") {
+          const orderRows = await requestJson<MarketplaceOrder[]>("/api/farmer_orders");
+          if (!stopped) setFarmerOrders(orderRows);
+        } else if (currentUser.role === "buyer") {
+          const orderRows = await requestJson<MarketplaceOrder[]>("/api/buyer_orders");
+          if (!stopped) setBuyerOrders(orderRows);
+        } else {
+          const dashboard = await requestJson<AdminDashboard>("/api/admin/dashboard");
+          if (!stopped) setAdminDashboard(dashboard);
+        }
+      } catch {
+        // Live refresh should stay quiet; manual actions still show explicit errors.
+      }
+    };
+
+    const refreshMs = currentUser.role === "admin" ? 7000 : 3500;
+    const intervalId = window.setInterval(() => void refreshLiveOrders(), refreshMs);
+    const handleFocus = () => void refreshLiveOrders();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [currentUser?.id, currentUser?.role]);
+
   const farmerStats = useMemo(() => {
     const lowStock = products.filter((product) => product.quantity > 0 && product.quantity < 10).length;
     const activeOrders = farmerOrders.length;
@@ -608,6 +713,21 @@ export function MarketplaceApp() {
     Math.min(marketPage, marketPageCount) * marketPageSize
   );
   const cartTotal = cartItems.reduce((sum, item) => sum + item.quantity * item.product.price, 0);
+
+  function nextTrackingStatus(order: MarketplaceOrder): TrackingStatus | null {
+    if (order.status === "cancelled" || order.status === "delivered") {
+      return null;
+    }
+
+    const currentIndex = Math.max(0, trackingSteps.indexOf((order.tracking_status as TrackingStatus) || "order_placed"));
+    return trackingSteps[currentIndex + 1] ?? null;
+  }
+
+  function trackingActionIcon(status: TrackingStatus) {
+    if (status === "packed") return <PackageCheck size={17} />;
+    if (status === "out_for_delivery") return <Truck size={17} />;
+    return <CheckCircle2 size={17} />;
+  }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1015,6 +1135,7 @@ export function MarketplaceApp() {
         })
       });
 
+      setPaymentStage("idle");
       setPaymentDraft({
         farmer_id: product.farmer_id,
         product_id: product.id,
@@ -1039,6 +1160,7 @@ export function MarketplaceApp() {
   async function releasePaymentReservation() {
     if (!paymentDraft?.reservation_id) {
       setPaymentDraft(null);
+      setPaymentStage("idle");
       return;
     }
 
@@ -1047,6 +1169,7 @@ export function MarketplaceApp() {
       body: JSON.stringify({ reservation_id: paymentDraft.reservation_id })
     }).catch(() => null);
     setPaymentDraft(null);
+    setPaymentStage("idle");
   }
 
   async function confirmPayment(success: boolean) {
@@ -1058,7 +1181,10 @@ export function MarketplaceApp() {
       return;
     }
 
+    setPaymentStage("processing");
+
     try {
+      await wait(1200);
       const response = await requestJson<{ success: boolean; message: string }>("/api/place_order", {
         method: "POST",
         body: JSON.stringify({
@@ -1070,14 +1196,19 @@ export function MarketplaceApp() {
           delivery_slot: paymentDraft.delivery_slot
         })
       });
-      showAlert(tr(response.message));
       setCartItems((items) => items.filter((item) => item.product.id !== paymentDraft.product_id));
-      setPaymentDraft(null);
       await Promise.all([searchProducts(searchQuery), loadBuyerDashboard()]);
       if (selectedFarmer) {
         await loadFarmerProfile(selectedFarmer.farmer.id);
       }
+      setPaymentStage("success");
+      showAlert(tr(response.message));
+      await wait(950);
+      setPaymentDraft(null);
+      setPaymentStage("idle");
+      setBuyerTab("orders");
     } catch (error) {
+      setPaymentStage("idle");
       showAlert(error instanceof Error ? tr(error.message) : tr("Payment failed."), "error");
     }
   }
@@ -1129,13 +1260,38 @@ export function MarketplaceApp() {
         method: "POST",
         body: JSON.stringify({
           tracking_status: trackingStatus,
-          tracking_note: trackingStatus === "out_for_delivery" ? "Farmer has started delivery." : ""
+          tracking_note:
+            trackingStatus === "packed"
+              ? "Farmer packed the order."
+              : trackingStatus === "out_for_delivery"
+                ? "Farmer has started delivery."
+                : "Order delivered to the customer."
         })
       });
       showAlert(tr(response.message));
       await loadFarmerDashboard();
     } catch (error) {
       showAlert(error instanceof Error ? tr(error.message) : tr("Tracking update failed."), "error");
+    }
+  }
+
+  async function submitCancelOrder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!cancelDraft) return;
+
+    try {
+      const response = await requestJson<{ success: boolean; message: string }>(
+        `/api/cancel_order/${cancelDraft.order_id}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ cancel_reason: cancelDraft.reason })
+        }
+      );
+      showAlert(tr(response.message));
+      setCancelDraft(null);
+      await loadFarmerDashboard();
+    } catch (error) {
+      showAlert(error instanceof Error ? tr(error.message) : tr("Order cancellation failed."), "error");
     }
   }
 
@@ -1752,8 +1908,11 @@ export function MarketplaceApp() {
           <span>{farmerOrders.length} {tr("pending delivery")}</span>
         </div>
         <div className="order-list">
-          {farmerOrders.map((order) => (
-            <article className="order-card" key={order.id}>
+          {farmerOrders.map((order) => {
+            const nextStatus = nextTrackingStatus(order);
+
+            return (
+            <article className={order.status === "cancelled" ? "order-card cancelled-order" : "order-card"} key={order.id}>
               <div>
                 <h3>{tr("Order")} #{order.id}: {productNameLabel(order.product_name)}</h3>
                 <p>
@@ -1765,28 +1924,44 @@ export function MarketplaceApp() {
                 <p className="muted">{tr("Payment")} {order.payment_reference || tr("recorded")}</p>
                 {order.delivery_slot && <p className="muted">{tr("Delivery slot")}: {tr(order.delivery_slot)}</p>}
                 <OrderTracker
-                  status={order.tracking_status}
+                  status={order.status === "cancelled" ? "cancelled" : order.tracking_status}
                   labels={[tr("Ordered"), tr("Packed"), tr("Out for delivery"), tr("Delivered")]}
+                  events={order.tracking_events}
+                  cancelReason={order.cancel_reason}
+                  cancelledAt={order.cancelled_at}
+                  labelForStatus={trackingStatusLabel}
                 />
               </div>
               <div className="order-side">
                 <StatusPill status={order.status} label={statusLabel(order.status)} />
                 <strong>{formatMoney(order.quantity * order.product_price)}</strong>
-                <button className="secondary-button fit" type="button" onClick={() => void updateTracking(order.id, "packed")}>
-                  <PackageCheck size={17} />
-                  {tr("Packed")}
-                </button>
-                <button className="secondary-button fit" type="button" onClick={() => void updateTracking(order.id, "out_for_delivery")}>
-                  <Truck size={17} />
-                  {tr("Out for delivery")}
-                </button>
-                <button className="primary-button fit" type="button" onClick={() => markDelivered(order.id)}>
-                  <Truck size={17} />
-                  {tr("Delivered")}
-                </button>
+                {nextStatus && (
+                  <button className={nextStatus === "delivered" ? "primary-button fit" : "secondary-button fit"} type="button" onClick={() => void updateTracking(order.id, nextStatus)}>
+                    {trackingActionIcon(nextStatus)}
+                    {trackingStatusLabel(nextStatus)}
+                  </button>
+                )}
+                {order.status !== "cancelled" && order.status !== "delivered" && (
+                  <button
+                    className="danger-button fit"
+                    type="button"
+                    onClick={() =>
+                      setCancelDraft({
+                        order_id: order.id,
+                        product_name: order.product_name,
+                        buyer_username: order.buyer_username ?? tr("buyer"),
+                        reason: ""
+                      })
+                    }
+                  >
+                    <AlertTriangle size={16} />
+                    {tr("Cancel request")}
+                  </button>
+                )}
               </div>
             </article>
-          ))}
+            );
+          })}
           {!farmerOrders.length && <EmptyState>{tr("No active orders.")}</EmptyState>}
         </div>
       </section>
@@ -2665,18 +2840,22 @@ export function MarketplaceApp() {
         </div>
         <div className="order-list">
           {buyerOrders.map((order) => (
-            <article className="order-card" key={order.id}>
+            <article className={order.status === "cancelled" ? "order-card cancelled-order" : "order-card"} key={order.id}>
               <div>
                 <h3>{productNameLabel(order.product_name)}</h3>
                 <p>
                   {order.quantity} {order.product_unit} {tr("from")} {order.farmer_username}
                 </p>
                 <p className="muted">{tr("Ordered")} {formatDate(order.timestamp)}</p>
-                <p className="muted">{tr("Delivered")} {formatDate(order.delivered_timestamp)}</p>
+                {order.delivered_timestamp && <p className="muted">{tr("Delivered")} {formatDate(order.delivered_timestamp)}</p>}
                 {order.delivery_slot && <p className="muted">{tr("Delivery slot")}: {tr(order.delivery_slot)}</p>}
                 <OrderTracker
-                  status={order.tracking_status}
+                  status={order.status === "cancelled" ? "cancelled" : order.tracking_status}
                   labels={[tr("Ordered"), tr("Packed"), tr("Out for delivery"), tr("Delivered")]}
+                  events={order.tracking_events}
+                  cancelReason={order.cancel_reason}
+                  cancelledAt={order.cancelled_at}
+                  labelForStatus={trackingStatusLabel}
                 />
               </div>
               <div className="order-side">
@@ -2822,13 +3001,32 @@ export function MarketplaceApp() {
           </div>
           <div className="table-like admin-orders">
             {adminDashboard.orders.map((order) => (
-              <div className="table-row" key={order.id}>
-                <span>#{order.id}</span>
-                <strong>{productNameLabel(order.product_name)}</strong>
-                <span>{order.buyer_username}</span>
-                <span>{order.farmer_username}</span>
-                <StatusPill status={order.status} label={statusLabel(order.status)} />
-                <span>{formatMoney(order.quantity * order.product_price)}</span>
+              <div className={order.status === "cancelled" ? "table-row admin-order-row cancelled-order" : "table-row admin-order-row"} key={order.id}>
+                <div className="admin-order-main">
+                  <span>#{order.id}</span>
+                  <strong>{productNameLabel(order.product_name)}</strong>
+                  <span>{order.buyer_username}</span>
+                  <span>{order.farmer_username}</span>
+                  <StatusPill status={order.status} label={statusLabel(order.status)} />
+                  <span>{formatMoney(order.quantity * order.product_price)}</span>
+                </div>
+                {(order.cancel_reason || order.tracking_events?.length) && (
+                  <div className="admin-order-detail">
+                    {order.cancel_reason && (
+                      <p>
+                        <strong>{tr("Cancellation reason")}:</strong> {order.cancel_reason}
+                      </p>
+                    )}
+                    <OrderTracker
+                      status={order.status === "cancelled" ? "cancelled" : order.tracking_status}
+                      labels={[tr("Ordered"), tr("Packed"), tr("Out for delivery"), tr("Delivered")]}
+                      events={order.tracking_events}
+                      cancelReason={order.cancel_reason}
+                      cancelledAt={order.cancelled_at}
+                      labelForStatus={trackingStatusLabel}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -3196,48 +3394,108 @@ export function MarketplaceApp() {
 
       {paymentDraft && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <section className="modal-card payment-card">
-            <button className="modal-close" type="button" onClick={() => void releasePaymentReservation()}>
+          <section className={`modal-card payment-card payment-${paymentStage}`}>
+            <button className="modal-close" type="button" disabled={paymentStage === "processing"} onClick={() => void releasePaymentReservation()}>
               <X size={20} />
             </button>
-            <div className="modal-icon">
-              <CreditCard size={28} />
-            </div>
-            <h2>{tr("Namma Pay")}</h2>
-            <img loading="lazy" decoding="async" src={productImage(paymentDraft.image_path, paymentDraft.name)} alt={paymentDraft.name} onError={fallbackImageOnError} />
-            <p>
-              {paymentDraft.quantity} {paymentDraft.unit} {tr("of")} {productNameLabel(paymentDraft.name)}
-            </p>
-            <strong>{formatMoney(paymentDraft.total)}</strong>
-            {paymentDraft.reservation_expires_at && (
-              <p className="muted">
-                <Clock size={15} /> {tr("Reserved until")} {formatDate(paymentDraft.reservation_expires_at)}
-              </p>
+            {paymentStage === "processing" ? (
+              <div className="payment-state">
+                <div className="payment-spinner" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <h2>{tr("Processing payment")}</h2>
+                <p>{tr("Securing your order and reserving stock.")}</p>
+              </div>
+            ) : paymentStage === "success" ? (
+              <div className="payment-state">
+                <div className="payment-success-icon">
+                  <CheckCircle2 size={44} />
+                </div>
+                <h2>{tr("Payment successful")}</h2>
+                <p>{tr("Redirecting to your orders.")}</p>
+              </div>
+            ) : (
+              <>
+                <div className="modal-icon">
+                  <CreditCard size={28} />
+                </div>
+                <h2>{tr("Namma Pay")}</h2>
+                <img loading="lazy" decoding="async" src={productImage(paymentDraft.image_path, paymentDraft.name)} alt={paymentDraft.name} onError={fallbackImageOnError} />
+                <p>
+                  {paymentDraft.quantity} {paymentDraft.unit} {tr("of")} {productNameLabel(paymentDraft.name)}
+                </p>
+                <strong>{formatMoney(paymentDraft.total)}</strong>
+                {paymentDraft.reservation_expires_at && (
+                  <p className="muted">
+                    <Clock size={15} /> {tr("Reserved until")} {formatDate(paymentDraft.reservation_expires_at)}
+                  </p>
+                )}
+                <label>
+                  {tr("Delivery slot")}
+                  <select
+                    value={paymentDraft.delivery_slot}
+                    onChange={(event) => setPaymentDraft({ ...paymentDraft, delivery_slot: event.target.value })}
+                  >
+                    {deliverySlots.map((slot) => (
+                      <option key={slot} value={slot}>
+                        {tr(slot)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="modal-actions">
+                  <button className="primary-button" type="button" onClick={() => void confirmPayment(true)}>
+                    <Check size={18} />
+                    {tr("Pay")}
+                  </button>
+                  <button className="danger-button" type="button" onClick={() => void confirmPayment(false)}>
+                    <X size={18} />
+                    {tr("Decline")}
+                  </button>
+                </div>
+              </>
             )}
+          </section>
+        </div>
+      )}
+
+      {cancelDraft && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <form className="modal-card cancel-card" onSubmit={submitCancelOrder}>
+            <button className="modal-close" type="button" onClick={() => setCancelDraft(null)}>
+              <X size={20} />
+            </button>
+            <div className="modal-icon danger-icon">
+              <AlertTriangle size={28} />
+            </div>
+            <h2>{tr("Cancel order request")}</h2>
+            <p className="muted">
+              {productNameLabel(cancelDraft.product_name)} {tr("for")} {cancelDraft.buyer_username}
+            </p>
             <label>
-              {tr("Delivery slot")}
-              <select
-                value={paymentDraft.delivery_slot}
-                onChange={(event) => setPaymentDraft({ ...paymentDraft, delivery_slot: event.target.value })}
-              >
-                {deliverySlots.map((slot) => (
-                  <option key={slot} value={slot}>
-                    {tr(slot)}
-                  </option>
-                ))}
-              </select>
+              {tr("Cancellation reason")}
+              <textarea
+                required
+                minLength={6}
+                maxLength={300}
+                value={cancelDraft.reason}
+                onChange={(event) => setCancelDraft({ ...cancelDraft, reason: event.target.value })}
+                placeholder={tr("Example: Stock damaged during packing, cannot deliver fresh produce.")}
+              />
             </label>
             <div className="modal-actions">
-              <button className="primary-button" type="button" onClick={() => confirmPayment(true)}>
-                <Check size={18} />
-                {tr("Pay")}
+              <button className="danger-button" type="submit">
+                <AlertTriangle size={17} />
+                {tr("Cancel order")}
               </button>
-              <button className="danger-button" type="button" onClick={() => confirmPayment(false)}>
-                <X size={18} />
-                {tr("Decline")}
+              <button className="ghost-button" type="button" onClick={() => setCancelDraft(null)}>
+                <X size={17} />
+                {tr("Keep order")}
               </button>
             </div>
-          </section>
+          </form>
         </div>
       )}
 

@@ -2,7 +2,7 @@ export type Role = "farmer" | "buyer" | "admin";
 export type OrderStatus = "pending" | "paid" | "delivered" | "cancelled";
 export type VerificationStatus = "unsubmitted" | "pending" | "approved" | "rejected";
 export type ReportStatus = "pending" | "approved" | "rejected";
-export type TrackingStatus = "order_placed" | "packed" | "out_for_delivery" | "delivered";
+export type TrackingStatus = "order_placed" | "packed" | "out_for_delivery" | "delivered" | "cancelled";
 
 export type UserProfile = {
   id: number;
@@ -94,6 +94,10 @@ export type MarketplaceOrder = {
   delivery_slot?: string | null;
   tracking_status?: TrackingStatus | string | null;
   tracking_note?: string | null;
+  cancel_reason?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  tracking_events?: OrderTrackingEvent[];
   product_name: string;
   farmer_username?: string;
   buyer_username?: string;
@@ -101,6 +105,16 @@ export type MarketplaceOrder = {
   review_id?: number | null;
   review_rating?: number | null;
   review_comment?: string | null;
+};
+
+export type OrderTrackingEvent = {
+  id: number;
+  order_id: number;
+  status: TrackingStatus | string;
+  note: string | null;
+  actor_id: number | null;
+  actor_role: Role | "system" | string;
+  created_at: string;
 };
 
 export type Review = {

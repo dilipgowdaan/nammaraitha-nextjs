@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { apiOk, numberFrom, requireUser } from "@/lib/api";
+import { loadTrackingEventsByOrder } from "@/lib/orderTracking";
 
 export const runtime = "nodejs";
 
@@ -23,10 +24,12 @@ export async function GET(request: NextRequest) {
 
   const buyerIds = [...new Set(orders.map((order) => numberFrom(order.buyer_id)))];
   const productIds = [...new Set(orders.map((order) => numberFrom(order.product_id)))];
+  const orderIds = orders.map((order) => numberFrom(order.id));
 
-  const [{ data: buyers }, { data: products }] = await Promise.all([
+  const [{ data: buyers }, { data: products }, trackingMap] = await Promise.all([
     auth.supabase.from("app_users").select("id, username, mobile").in("id", buyerIds),
-    auth.supabase.from("products").select("id, name").in("id", productIds)
+    auth.supabase.from("products").select("id, name").in("id", productIds),
+    loadTrackingEventsByOrder(auth.supabase, orderIds).catch(() => new Map())
   ]);
 
   const buyerMap = new Map((buyers ?? []).map((buyer) => [numberFrom(buyer.id), buyer]));
@@ -53,7 +56,11 @@ export async function GET(request: NextRequest) {
         payment_reference: order.payment_reference,
         delivery_slot: order.delivery_slot ?? null,
         tracking_status: order.tracking_status ?? "order_placed",
-        tracking_note: order.tracking_note ?? null
+        tracking_note: order.tracking_note ?? null,
+        cancel_reason: order.cancel_reason ?? null,
+        cancelled_at: order.cancelled_at ?? null,
+        cancelled_by: order.cancelled_by ? numberFrom(order.cancelled_by) : null,
+        tracking_events: trackingMap.get(numberFrom(order.id)) ?? []
       };
     })
   );

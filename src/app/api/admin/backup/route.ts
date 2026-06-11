@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     return auth.error;
   }
 
-  const tables = ["app_users", "products", "orders", "reviews", "reports", "audit_logs"] as const;
+  const tables = ["app_users", "products", "orders", "order_tracking_events", "reviews", "reports", "audit_logs"] as const;
   const snapshot: Record<string, unknown> = {};
 
   for (const table of tables) {
