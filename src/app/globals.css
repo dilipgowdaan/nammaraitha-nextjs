@@ -1725,6 +1725,7 @@ button.primary-button:hover {
   color: #2e7d32;
   display: inline-flex;
   flex: 0 0 auto;
+  font-size: 0;
   justify-content: center;
   line-height: 1;
   place-items: center;
@@ -1735,7 +1736,9 @@ button.primary-button:hover {
 .floating-icon-button {
   align-items: center;
   display: inline-flex;
+  font-size: 0;
   justify-content: center;
+  line-height: 1;
 }
 
 .stat-icon svg,
@@ -1748,6 +1751,9 @@ button.primary-button:hover {
 .logo-button svg {
   display: block;
   flex: 0 0 auto;
+  margin: auto;
+  position: relative;
+  top: 1px;
 }
 
 .catalog-card.selected,
