@@ -2,7 +2,7 @@
 
 Namma Raitha is a full-stack local farmer marketplace built with Next.js, Supabase, and Vercel. It helps farmers list fresh produce directly, lets buyers discover nearby verified farmers, and gives admins the tools to manage users, KYC, orders, reports, and platform activity.
 
-Live website: [https://nammaraitha-app.vercel.app/](https://nammaraitha-app.vercel.app/)
+Live website: [https://nammaraitha.vercel.app/](https://nammaraitha.vercel.app/)
 
 ## Overview
 
